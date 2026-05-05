@@ -450,7 +450,8 @@ function GenealogyDashboard() {
     const numeroSerie = qrValue.slice(qrValue.length - 8);
     const fecha = formatLabelDate(new Date());
 
-    const modelo = getMetaValue(1);
+    
+    const modelo = getMetaValue(1) || getMetaValue(299);
     const voltaje = getMetaValue(181);
     const potencia = getMetaValue(119);
     const capacidad60LBP = getMetaValue(115);

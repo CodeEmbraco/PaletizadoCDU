@@ -96,7 +96,7 @@ export default function PrinterComponent() {
   const checkConfig = () => {};
 
   function formatZPLDate(date) {
-    let year = date.getFullYear();
+    let year = date.getFullYear().toString().slice(-2);
     let month = (date.getMonth() + 1).toString().padStart(2, "0");
     let day = date.getDate().toString().padStart(2, "0");
     let hours = date.getHours().toString().padStart(2, "0");
