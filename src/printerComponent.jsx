@@ -286,7 +286,7 @@ export default function PrinterComponent() {
         </Select>
       </FormControl>
       <div className={classes.root}>
-        <Button
+        {/* <Button
           onClick={handlePrintAccesories}
           className={
             "w-64 h-12 rounded text-base flex justify-center hover:bg-green-500"
@@ -295,7 +295,7 @@ export default function PrinterComponent() {
           disabled={!printer}
         >
           Imprimir Accesorios
-        </Button>
+        </Button> */}
       </div>
       <div className={classes.root}>
 

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { endpointsCodes } from './endpointCodes';
 import { notifyError, notifyErrorInSAP, notifyGenealogyNotFound, notifyProductAlreadyMounted, notifyProductMounted, notifyProductUnmounted, notifyProductsJoined, notifySuccesInSAP } from '../../partials/paletization/Toasts';
 import { tailwindConfig } from '../../utils/Utils';
+import { API_BASE } from '../../utils/apiBase';
 
 const initialState = {
     pallet: {},
@@ -10,6 +11,7 @@ const initialState = {
     componentsJoined: false,
     genealogyData: {},
     loadingProcessInSap: false,
+    palletNotified: {},
     componentsCount: 0,
     componentsInOrderList: [],
     logs: [],
@@ -80,6 +82,9 @@ const palletsSlice = createSlice({
         setLoadingProcessInSap: (state, action) => {
           state.loadingProcessInSap = action.payload;
         },
+        setPalletNotified: (state, action) => {
+          state.palletNotified = action.payload;
+        },
         setComponentsCount: (state, action) => {
           state.componentsCount = action.payload;
         },
@@ -99,6 +104,7 @@ export const {
     setComponentsJoined,
     setGenealogyData,
     setLoadingProcessInSap,
+    setPalletNotified,
     setComponentsCount,
     setComponentsInOrderList,
     setChartDataOrderProgress
@@ -115,6 +121,8 @@ export const selectGenealogyData = (state) => state.pallets.genealogyData;
 
 export const selectLoadingProcessInSap = (state) => state.pallets.loadingProcessInSap;
 
+export const selectPalletNotified = (state) => state.pallets.palletNotified;
+
 export const selectComponentsCount = (state) => state.pallets.componentsCount;
 
 export const selectComponentsInOrderList = (state) => state.pallets.componentsInOrderList;
@@ -128,7 +136,7 @@ export default palletsSlice.reducer;
 export const joinComponents = (payload) => (dispatch) => {
  
   axios
-    .post(`http://10.13.225.20:8002/api/v1/genealogy/component/`, payload)
+    .post(`${API_BASE()}/api/v1/genealogy/component/`, payload)
     .then((response) => {
       if (response.status === 201) {
         notifyProductsJoined(payload.condenser_unit_serial)
@@ -153,7 +161,7 @@ export const joinComponents = (payload) => (dispatch) => {
 export const countComponentsJoinedInOrder = (order) => (dispatch) => {
 
   axios
-    .get(`http://10.13.225.20:8002/api/v1/genealogy/component/?order=${order}&mode=count`,)
+    .get(`${API_BASE()}/api/v1/genealogy/component/?order=${order}&mode=count`,)
     .then((response) => {
       if (response.status === 200) {
         console.log(response.data.total);
@@ -177,7 +185,7 @@ export const countComponentsJoinedInOrder = (order) => (dispatch) => {
 export const componentsInOrderList = (order) => (dispatch) => {
 
   axios
-    .get(`http://10.13.225.20:8002/api/v1/genealogy/component/?order=${order}&mode=list`,)
+    .get(`${API_BASE()}/api/v1/genealogy/component/?order=${order}&mode=list`,)
     .then((response) => {
       if (response.status === 200) {
         console.log(response.data);
@@ -201,7 +209,7 @@ export const componentsInOrderList = (order) => (dispatch) => {
 export const getCompressor = (condenserSerial) => async (dispatch) => {
   try {
     console.log("Validando condenser serial");
-    const response = await axios.get(`http://10.13.225.20:8002/api/v1/genealogy/component/?condenser_unit_serial=${condenserSerial}`);
+    const response = await axios.get(`${API_BASE()}/api/v1/genealogy/component/?condenser_unit_serial=${condenserSerial}`);
     if (response.status === 200) {
       // dispatch(setGenealogyData(response.data));
       // dispatch(setComponentsJoined(true));
@@ -233,21 +241,22 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
         quantity: quantity
     }
     axios
-      .post('http://10.13.225.20:8002/api/v1/paletization/pallets/', palletData)
+      .post(`${API_BASE()}/api/v1/paletization/pallets/`, palletData)
       .then((response) => {
         if (response.status === 201) {
-          //dispatch(setLoading(false));
           console.log("Pallet creado con éxito:", response.data);
-          //dispatch(setCompressorTestResults(response.data.results));
-          //console.log(response.data.global_status);
-          //dispatch(setGlobalStatus(response.data.global_status));
           dispatch(setPallet(response.data));
         } else if (response.status === 200){
-        console.log("Se encontró registro de Pallet:", response.data);
-        dispatch(setPallet(response.data));
-        const palletIdentifier = response.data.identifier;
-        console.log(palletIdentifier);
-        dispatch(getAllComponents(palletIdentifier))
+          console.log("Se encontró registro de Pallet:", response.data);
+          dispatch(setPallet(response.data));
+          const palletIdentifier = response.data.identifier;
+          dispatch(getAllComponents(palletIdentifier));
+        }
+        const pallet = response.data;
+        if (pallet?.send_to_sap && pallet?.sap_success) {
+          dispatch(setPalletNotified({ ICharg: pallet.identifier }));
+        } else {
+          dispatch(setPalletNotified({}));
         }
       })
       .catch((error) => endpointsCodes(error, dispatch, setNotFound));
@@ -261,7 +270,7 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
     // };
     // dispatch(addEvent(startFetchOrders));
     axios
-     .get(`http://10.13.225.20:8002/api/v1/paletization/pallets/${palletIdentifier}/components/`)
+     .get(`${API_BASE()}/api/v1/paletization/pallets/${palletIdentifier}/components/`)
      .then((response) => {
         if (response.status === 200) {
           //dispatch(setLoading(false));
@@ -286,7 +295,7 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
     }
     console.log("Montando componente + ", data);
     axios
-      .post(`http://10.13.225.20:8002/api/v1/paletization/pallets/${palletId}/components/add/`, data)
+      .post(`${API_BASE()}/api/v1/paletization/pallets/${palletId}/components/add/`, data)
       .then((response) => {
         console.log(response.status);
         console.log("MANDANDO A ACTUALIZAR LOS COMPONENTS")
@@ -316,7 +325,7 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
   export const unmountComponentAPI = (palletIdentifier, component) => (dispatch) => {
     // Realiza una solicitud DELETE para desmontar el componente
     axios
-      .delete(`http://10.13.225.20:8002/api/v1/paletization/pallets/${palletIdentifier}/components/${component.id}/dismount/`)
+      .delete(`${API_BASE()}/api/v1/paletization/pallets/${palletIdentifier}/components/${component.id}/dismount/`)
       .then((response) => {
         if (response.status === 204) {
             notifyProductUnmounted(component.compUnitSerial);
@@ -339,7 +348,7 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
     // };
     // dispatch(addEvent(startFetchOrders));
     axios
-     .get(`http://10.13.225.20:8002/api/v1/paletization/logs/?workstation=MXCDU01&page=1&page_size=10`)
+     .get(`${API_BASE()}/api/v1/paletization/logs/?workstation=MXCDU01&page=1&page_size=10`)
      .then((response) => {
         if (response.status === 200) {
           //dispatch(setLoading(false));
@@ -352,43 +361,35 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
      .catch((error) => endpointsCodes(error, dispatch, setNotFound));
   }
 
-  export const reprocessPallet = (palletIdentifier) => (dispatch) => {
-    // Realiza una solicitud DELETE para desmontar el componente
+  export const reprocessPallet = (palletIdentifier, interfaceVal, fase, complemento) => async (dispatch) => {
     const data = {
-      pallet: palletIdentifier
+      pallet: palletIdentifier,
+      ...(interfaceVal !== undefined && { interface: interfaceVal }),
+      ...(fase !== undefined && { fase }),
+      ...(complemento !== undefined && { complemento }),
     }
-    axios
-      .post(`http://10.13.225.20:8002/api/v1/paletization/reprocess/`, data)
-      .then((response) => {
-        
-        if (response.status === 200) {
-          dispatch(setLoadingProcessInSap(false));
-          console.log(response.data);
-          if (response.data.EMessage === "Process Notification executed successfully") {
-            console.log("Notificación exitosa")
-            notifySuccesInSAP(xmlData.ICharg, response.data.EMessage);
-            const palletHasBeenNotified = {
-              text: "Pallet notificado: " + xmlData.ICharg,
-              timestamp: new Date().toISOString(),
-            };
-            dispatch(addEventToPaletizationLog(palletHasBeenNotified));
-            dispatch(setPalletNotified({"ICharg": xmlData.ICharg}))
-            dispatch(getOrderDetail(orderSelected.aufnr))
-          } else {
-            dispatch(setLoadingProcessInSap(false));
-            console.log("Error!")
-            console.log(response.data.EMessage)
-            notifyErrorInSAP(xmlData.ICharg, response.data.EMessage);
-          }
+    try {
+      const response = await axios.post(`${API_BASE()}/api/v1/paletization/reprocess/`, data);
+      dispatch(setLoadingProcessInSap(false));
+      if (response.status === 200) {
+        if (response.data.EMessage === "Process Notification executed successfully") {
+          notifySuccesInSAP(palletIdentifier, response.data.EMessage);
+          dispatch(addEventToPaletizationLog({
+            text: "Pallet notificado: " + palletIdentifier,
+            timestamp: new Date().toISOString(),
+          }));
+          dispatch(setPalletNotified({ ICharg: palletIdentifier }));
+        } else {
+          notifyErrorInSAP(palletIdentifier, response.data.EMessage);
         }
-      })
-      .catch((error) => {
-        // Maneja los errores, como lo hiciste anteriormente
-        endpointsCodes(error, dispatch, setNotFound);
-      });
+      }
+    } catch (error) {
+      notifyErrorInSAP(palletIdentifier, error.message);
+      endpointsCodes(error, dispatch, setNotFound);
+    }
   };
 
-  export const processInSAP = (orderSelected, pallet, components) => (dispatch) => {
+  export const processInSAP = (orderSelected, pallet, components) => async (dispatch) => {
     dispatch(setLoadingProcessInSap(true));
     const currentDatetime = new Date();
     const currentDate = currentDatetime.toISOString().split('T')[0];
@@ -400,7 +401,6 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
       matfi: component.compressor_material_code,
       tipo: "S"
     }));
-    
 
     const xmlData = {
       IArbpl: "MXCDU01",
@@ -413,32 +413,22 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
       INumin: "F",
       ItJsonInst: ItJsonInst
     };
-    console.log(xmlData);
-    
-  
-    axios
-      .post(`http://10.13.225.20:8002/api/v1/paletization/pallets/sap/notifiy/`, xmlData)
-      .then((response) => {
-        console.log("MANDANDO A NOTIFICAR A SAP")
-        if (response.status === 200) {
-          dispatch(setLoadingProcessInSap(false));
-          console.log(response.data);
-          if (response.data.EMessage === "Process Notification executed successfully") {
-            console.log("Notificación exitosa")
-            notifySuccesInSAP(xmlData.ICharg, response.data.EMessage);
-            dispatch(getAllComponents(pallet.identifier));
-          } else {
-            dispatch(setLoadingProcessInSap(false));
-            console.log("Error!")
-            console.log(response.data.EMessage)
-            notifyErrorInSAP(xmlData.ICharg, response.data.EMessage);
-          }
+
+    try {
+      const response = await axios.post(`${API_BASE()}/api/v1/paletization/pallets/sap/notifiy/`, xmlData);
+      if (response.status === 200) {
+        if (response.data.EMessage === "Process Notification executed successfully") {
+          notifySuccesInSAP(xmlData.ICharg, response.data.EMessage);
+          dispatch(setPalletNotified({ ICharg: xmlData.ICharg }));
+          dispatch(getAllComponents(pallet.identifier));
         } else {
+          notifyErrorInSAP(xmlData.ICharg, response.data.EMessage);
         }
-      })
-      .catch((error) => {
-        dispatch(setLoadingProcessInSap(false));
-        console.log(error);
-        notifyErrorInSAP(xmlData.ICharg, error.message);
-      });
+      }
+    } catch (error) {
+      console.log(error);
+      notifyErrorInSAP(xmlData.ICharg, error.message);
+    } finally {
+      dispatch(setLoadingProcessInSap(false));
+    }
   }

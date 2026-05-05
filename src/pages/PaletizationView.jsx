@@ -1,15 +1,5 @@
 import icons from "../assets/icons/icons";
-import React, { useEffect, useState, useRef } from "react";
-import ReactToPrint from "react-to-print";
-import { makeStyles } from "@material-ui/core/styles";
-import Button from "@material-ui/core/Button";
-import InputLabel from "@material-ui/core/InputLabel";
-import Input from "@material-ui/core/Input";
-import MenuItem from "@material-ui/core/MenuItem";
-import FormControl from "@material-ui/core/FormControl";
-import Select from "@material-ui/core/Select";
-import handlePrint from "../printerComponent";
-import BrowserPrintComponent from "../printerComponent";
+import { useEffect, useState } from "react";
 import {
   Add,
   Barcode,
@@ -24,7 +14,10 @@ import {
   Health,
   Notepad2,
   Scan,
+  Code,
 } from "iconsax-react";
+
+const DEV_PASSWORD = "dev1234";
 
 import Stepper from "@keyvaluesystems/react-vertical-stepper";
 
@@ -37,6 +30,8 @@ import { useSelector, useDispatch } from "react-redux";
 import {
   selectOrderSelected,
   metadataOrderSelected,
+  setOrderSelected,
+  setMetadataOrderSelected,
 } from "../store/slice/orderSelectedSlice";
 
 import { addEventToPaletizationLog, selectPaletizationLog } from "../store/slice/eventsLogSlice";
@@ -56,9 +51,11 @@ import {
   getCompressor,
   setComponentsJoined,
   setComponents,
-  selectLoadingProcessInSap
+  selectLoadingProcessInSap,
+  selectPalletNotified,
+  setPalletNotified,
+  setPallet,
 } from "../store/slice/palletsSlice";
-import LabelPrinting from "../partials/genealogy/LabelPrinting";
 import ComponentsTable from "../partials/paletization/ComponentsTable";
 
 import {
@@ -68,38 +65,12 @@ import {
 import ModalBlank from "../components/ModalBlank";
 
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    display: "flex",
-    flexWrap: "wrap",
-    "& button": {
-      flexBasis: "20%",
-      margin: "2%",
-    },
-  },
-  container: {
-    display: "flex",
-    flexWrap: "wrap",
-  },
-  formControl: {
-    marginTop: "5%",
-    marginBottom: "7%",
-    minWidth: 120,
-  },
-}));
-
 function PaletizationView() {
   const testResultsList = useSelector(selectTestResults);
   const globalStatus = useSelector(selectGlobalStatus);
   const orderSelected = useSelector(selectOrderSelected);
   const metadata = useSelector(metadataOrderSelected);
   const paletizationLog = useSelector(selectPaletizationLog);
-
-  const classes = useStyles();
-  const [open, setOpen] = React.useState(false);
-  const [deviceList, setDevices] = React.useState([]);
-  const [printer, setPrinter] = React.useState(null);
-  const [zebraPrinter, setZebraPrinter] = React.useState(null);
 
   const [infoModalOpen, setInfoModalOpen] = useState(false);
 
@@ -110,8 +81,6 @@ function PaletizationView() {
 
   const dispatch = useDispatch();
 
-  const labelRef = useRef();
-
   const [selectedItems, setSelectedItems] = useState([]);
 
   const palletSelected = useSelector(selectPallet);
@@ -119,84 +88,97 @@ function PaletizationView() {
   const componentsList = useSelector(selectComponents);
 
   const isLoading = useSelector(selectLoadingProcessInSap);
-  
+  const palletNotified = useSelector(selectPalletNotified);
+
+  const [hasProcessed, setHasProcessed] = useState(false);
+  const [isProcessingPallet, setIsProcessingPallet] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      dispatch(setOrderSelected({}));
+      dispatch(setMetadataOrderSelected([]));
+      dispatch(setGlobalStatus(""));
+      dispatch(setTestResults([]));
+      dispatch(setComponentsJoined(false));
+      dispatch(setComponents([]));
+      dispatch(setPallet({}));
+      dispatch(setPalletNotified({}));
+    };
+  }, []);
+
+  useEffect(() => {
+    setHasProcessed(false);
+  }, [palletSelected?.identifier]);
 
   const handleSelectedItems = (selectedItems) => {
     setSelectedItems([...selectedItems]);
   };
 
+  const handleScan = async (rawCode) => {
+    const code = rawCode.replace(/Shift/g, "").toUpperCase();
+    console.log(code);
+    if (code === "NEW") {
+      handleNew();
+      return;
+    }
+    if (code.length >= 11) {
+      const codeScannedEvent = {
+        text: "Producto escaneado: " + code,
+        timestamp: new Date().toISOString(),
+      };
+      notifyProductScanned(code);
+      setBarcodeProduct(code);
+      dispatch(addEventToPaletizationLog(codeScannedEvent));
+      dispatch(getTestResults(code));
+
+      const getTestResultsEvent = {
+        text: "Consultando resultados de prueba de producto: " + code,
+        timestamp: new Date().toISOString(),
+      };
+
+      dispatch(addEventToPaletizationLog(getTestResultsEvent));
+
+      const response = await dispatch(getCompressor(code));
+      const condenserMaterial = orderSelected.matnr?.slice(-9) ?? "";
+      const compressorComponent = orderSelected.components?.find((c) => c.tipo === "C");
+      const compressorMaterial =
+        compressorComponent?.matnr || response?.compressor_material_code || "";
+      const data = {
+        palette: palletSelected.identifier,
+        condenser: code,
+        compressor: response.compressor_unit_serial,
+        compressorMaterial: compressorMaterial,
+        condenserMaterial: condenserMaterial,
+      };
+      console.log(data);
+      dispatch(mountComponent(data));
+    } else {
+      const codeScannedEvent = {
+        text: "Pallet escaneado: " + code,
+        timestamp: new Date().toISOString(),
+      };
+      setBarcodePallet(code);
+      dispatch(addEventToPaletizationLog(codeScannedEvent));
+      dispatch(
+        createPallet(
+          orderSelected.aufnr,
+          code,
+          orderSelected.matnr.slice(-9),
+          metadata.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT
+        )
+      );
+
+      const createPalletEvent = {
+        text: "Consultando registro de Pallet: " + code,
+        timestamp: new Date().toISOString(),
+      };
+      notifyPalletScanned(code);
+      dispatch(addEventToPaletizationLog(createPalletEvent));
+    }
+  };
+
   useScanDetection({
-    onComplete: async (code) => {
-      console.log(code);
-      if(code.replace(/Shift/g, "").toUpperCase() === "NEW"){
-        handleNew();
-        return;
-      }
-      if (code.replace(/Shift/g, "").length >= 11) {
-        // Si la cadena tiene al menos 9 caracteres, considerarla un ID de producto
-        const codeScannedEvent = {
-          text:
-            "Producto escaneado: " + code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-        notifyProductScanned(code.replace(/Shift/g, "").toUpperCase());
-        setBarcodeProduct(code.replace(/Shift/g, "").toUpperCase());
-        dispatch(addEventToPaletizationLog(codeScannedEvent));
-        dispatch(getTestResults(code.replace(/Shift/g, "").toUpperCase()));
-
-        const getTestResultsEvent = {
-          text:
-            "Consultando resultados de prueba de producto: " +
-            code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-
-        dispatch(addEventToPaletizationLog(getTestResultsEvent));
-        const condenserMaterial = orderSelected.matnr.slice(-9);
-        const compressorMaterial = orderSelected.components[0].matnr;
-        // console.log("GLOBAL STATUS" + globalStatus);
-
-        //   if (globalStatus === 0) {
-        //     setInfoModalOpen(true);
-        //   } else if (globalStatus === 1) {
-        //     setInfoModalOpen(false);
-
-        // }
-        const response = await dispatch(
-          getCompressor(code.replace(/Shift/g, "").toUpperCase())
-        );
-        const data = {
-          palette: palletSelected.identifier,
-          condenser: code.replace(/Shift/g, "").toUpperCase(),
-          compressor: response.compressor_unit_serial,
-          compressorMaterial: compressorMaterial,
-          condenserMaterial: condenserMaterial,
-        };
-        console.log(data);
-        dispatch(mountComponent(data));
-      } else {
-        // Si la cadena es más corta, considerarla un ID de pallet
-        const codeScannedEvent = {
-          text: "Pallet escaneado: " + code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-        setBarcodePallet(code.replace(/Shift/g, "").toUpperCase());
-        dispatch(addEventToPaletizationLog(codeScannedEvent));
-        dispatch(createPallet(orderSelected.aufnr,code.replace(/Shift/g, "").toUpperCase(), orderSelected.matnr.slice(-9), metadata.find(
-          (obj) => obj.ID_CARACTMATERIAL === 185
-        )?.DE_VALORCARACTMAT));
-
-        const createPalletEvent = {
-          text:
-            "Consultando registro de Pallet: " +
-            code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-        notifyPalletScanned(code.replace(/Shift/g, "").toUpperCase());
-
-        dispatch(addEventToPaletizationLog(createPalletEvent));
-      }
-    },
+    onComplete: (code) => handleScan(code),
   });
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -288,6 +270,8 @@ function PaletizationView() {
     dispatch(setTestResults([]));
     dispatch(setComponentsJoined(false));
     dispatch(setComponents([]));
+    dispatch(setPalletNotified({}));
+    setHasProcessed(false);
     const handleNewEvent = {
       text:
         "Comando NUEVO detectado. Proceso reiniciado." ,
@@ -296,8 +280,25 @@ function PaletizationView() {
     dispatch(addEventToGenealogyLog(handleNewEvent));
   }
 
-  function handleNotify() {
-    dispatch(processInSAP(orderSelected, palletSelected, componentsList));
+  async function handleNotify() {
+    if (
+      hasProcessed ||
+      isProcessingPallet ||
+      isLoading ||
+      palletNotified?.ICharg === palletSelected?.identifier
+    ) {
+      return;
+    }
+    setHasProcessed(true);
+    setIsProcessingPallet(true);
+    try {
+      await dispatch(processInSAP(orderSelected, palletSelected, componentsList));
+    } catch (error) {
+      console.log("Error al procesar pallet: " + error);
+      setHasProcessed(false);
+    } finally {
+      setIsProcessingPallet(false);
+    }
   }
 
   function buildTreeData(obj) {
@@ -327,6 +328,26 @@ function PaletizationView() {
   }
 
   const [expandedNodes, setExpandedNodes] = useState([]);
+  const [editingPalletQty, setEditingPalletQty] = useState(false);
+  const [palletQtyInput, setPalletQtyInput] = useState("");
+
+  // Dev mode
+  const [devModeActive, setDevModeActive] = useState(
+    () => localStorage.getItem("devMode") === "true"
+  );
+  const [devPasswordInput, setDevPasswordInput] = useState("");
+  const [devPasswordModalOpen, setDevPasswordModalOpen] = useState(false);
+  const [devPalletInput, setDevPalletInput] = useState("");
+  const [devProductInput, setDevProductInput] = useState("");
+
+  const activateDevMode = () => {
+    localStorage.setItem("devMode", "true");
+    setDevModeActive(true);
+  };
+  const deactivateDevMode = () => {
+    localStorage.removeItem("devMode");
+    setDevModeActive(false);
+  };
 
   const toggleNode = (nodeId) => {
     if (expandedNodes.includes(nodeId)) {
@@ -368,6 +389,24 @@ function PaletizationView() {
     );
   };
 
+  function handlePalletQtyClick() {
+    const current = metadata?.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT ?? "";
+    setPalletQtyInput(current);
+    setEditingPalletQty(true);
+  }
+
+  function handlePalletQtyConfirm() {
+    if (palletQtyInput !== "" && !isNaN(palletQtyInput)) {
+      const updated = metadata.map((obj) =>
+        obj.ID_CARACTMATERIAL === 185
+          ? { ...obj, DE_VALORCARACTMAT: palletQtyInput }
+          : obj
+      );
+      dispatch(setMetadataOrderSelected(updated));
+    }
+    setEditingPalletQty(false);
+  }
+
   return (
     <>
       <div className="px-4 sm:px-6 lg:px-8 py-2 w-full max-w-10xl mx-auto">
@@ -396,7 +435,24 @@ function PaletizationView() {
                     </button>
 
                   )}
-                  <BrowserPrintComponent />
+                  <button
+                    onClick={() => {
+                      if (devModeActive) {
+                        deactivateDevMode();
+                      } else {
+                        setDevPasswordInput("");
+                        setDevPasswordModalOpen(true);
+                      }
+                    }}
+                    title="Modo desarrollador"
+                    className={`border rounded w-10 h-12 flex items-center justify-center ${
+                      devModeActive
+                        ? "border-amber-400 bg-amber-50"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    <Code size={18} color={devModeActive ? "#d97706" : "#94a3b8"} />
+                  </button>
                   {componentsList.length === 0 ? null : (
                     isLoading ? (<button
                       onClick={
@@ -421,31 +477,42 @@ function PaletizationView() {
                         Cargando...
                       </span>
                     </button>) : (
-                      <button
-                      onClick={
-                        handleNotify
-                        //
-                      }
-                      className={
-                        componentsList.some(
+                      (() => {
+                        const hasUnsent = componentsList.some(
                           (component) => component.send_to_sap === false
-                        )
+                        );
+                        const meetsMinCount =
+                          componentsList.length >=
+                          Number(
+                            metadata?.find(
+                              (obj) => obj.ID_CARACTMATERIAL === 185
+                            )?.DE_VALORCARACTMAT
+                          );
+                        const alreadyNotified =
+                          palletNotified?.ICharg === palletSelected?.identifier;
+                        const ready =
+                          hasUnsent &&
+                          meetsMinCount &&
+                          !hasProcessed &&
+                          !isProcessingPallet &&
+                          !alreadyNotified;
+                        return (
+                      <button
+                      onClick={handleNotify}
+                      className={
+                        ready
                           ? "w-64 h-12 bg-primary rounded text-white text-base flex justify-center hover:bg-green-500"
                           : "w-64 h-12 bg-secondary rounded text-black text-base flex justify-center hover:text-white disabled:pointer-events-none"
                       }
-                      disabled={
-                        componentsList.some(
-                          (component) => component.send_to_sap === false
-                        )
-                          ? false
-                          : true
-                      }
+                      disabled={!ready}
                     >
-                    
+
                       <span className="bg-transparent my-auto text-white font-semibold">
                         Procesar
                       </span>
                     </button>
+                        );
+                      })()
                     )
                   )}
                 </div>
@@ -518,13 +585,32 @@ function PaletizationView() {
                         </h3>
                       </div>
 
-                      <p className="bg-white text-3xl font-bold text-black">
-                        {Array.isArray(metadata) && metadata.length > 0
-                          ? metadata.find(
-                              (obj) => obj.ID_CARACTMATERIAL === 185
-                            )?.DE_VALORCARACTMAT
-                          : "--------"}
-                      </p>
+                      {editingPalletQty ? (
+                        <input
+                          className="text-3xl font-bold text-black border-b-2 border-primary outline-none w-24 bg-white"
+                          type="number"
+                          value={palletQtyInput}
+                          autoFocus
+                          onChange={(e) => setPalletQtyInput(e.target.value)}
+                          onBlur={handlePalletQtyConfirm}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handlePalletQtyConfirm();
+                            if (e.key === "Escape") setEditingPalletQty(false);
+                          }}
+                        />
+                      ) : (
+                        <p
+                          className="bg-white text-3xl font-bold text-black cursor-pointer hover:text-primary"
+                          onClick={handlePalletQtyClick}
+                          title="Click para editar"
+                        >
+                          {Array.isArray(metadata) && metadata.length > 0
+                            ? metadata.find(
+                                (obj) => obj.ID_CARACTMATERIAL === 185
+                              )?.DE_VALORCARACTMAT
+                            : "--------"}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -717,6 +803,140 @@ function PaletizationView() {
           </div>
         </div>
       </div>
+
+      {/* Dev mode password modal */}
+      {devPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-80">
+            <h3 className="text-lg font-semibold text-slate-800 mb-1">Modo desarrollador</h3>
+            <p className="text-sm text-slate-500 mb-4">Ingresa la contraseña para activar.</p>
+            <input
+              type="password"
+              autoFocus
+              className="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-3 outline-none focus:border-amber-400"
+              placeholder="Contraseña"
+              value={devPasswordInput}
+              onChange={(e) => setDevPasswordInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (devPasswordInput === DEV_PASSWORD) {
+                    activateDevMode();
+                    setDevPasswordModalOpen(false);
+                  } else {
+                    setDevPasswordInput("");
+                  }
+                }
+                if (e.key === "Escape") setDevPasswordModalOpen(false);
+              }}
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                className="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+                onClick={() => setDevPasswordModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="px-3 py-1.5 text-sm bg-amber-400 text-white rounded hover:bg-amber-500"
+                onClick={() => {
+                  if (devPasswordInput === DEV_PASSWORD) {
+                    activateDevMode();
+                    setDevPasswordModalOpen(false);
+                  } else {
+                    setDevPasswordInput("");
+                  }
+                }}
+              >
+                Activar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dev mode floating panel */}
+      {devModeActive && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white border-2 border-amber-400 rounded-xl shadow-2xl p-4 w-72">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <Code size={16} color="#d97706" />
+              <span className="text-sm font-semibold text-amber-600">Dev Mode</span>
+            </div>
+            <button
+              onClick={() => deactivateDevMode()}
+              className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Simular Pallet */}
+          <div className="mb-3">
+            <label className="text-xs text-slate-500 block mb-1">Simular escaneo de Pallet</label>
+            <div className="flex space-x-1">
+              <input
+                className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
+                placeholder="ID Pallet (7 dígitos)"
+                value={devPalletInput}
+                onChange={(e) => setDevPalletInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && devPalletInput.trim()) {
+                    handleScan(devPalletInput.trim());
+                    setDevPalletInput("");
+                  }
+                }}
+              />
+              <button
+                className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
+                disabled={!devPalletInput.trim()}
+                onClick={() => {
+                  handleScan(devPalletInput.trim());
+                  setDevPalletInput("");
+                }}
+              >
+                Scan
+              </button>
+            </div>
+          </div>
+
+          {/* Simular Producto */}
+          <div className="mb-3">
+            <label className="text-xs text-slate-500 block mb-1">Simular escaneo de Producto</label>
+            <div className="flex space-x-1">
+              <input
+                className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
+                placeholder="Ej. 515380042826MHTNC"
+                value={devProductInput}
+                onChange={(e) => setDevProductInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && devProductInput.trim()) {
+                    handleScan(devProductInput.trim());
+                    setDevProductInput("");
+                  }
+                }}
+              />
+              <button
+                className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
+                disabled={!devProductInput.trim()}
+                onClick={() => {
+                  handleScan(devProductInput.trim());
+                  setDevProductInput("");
+                }}
+              >
+                Scan
+              </button>
+            </div>
+          </div>
+
+          {/* Botón NEW */}
+          <button
+            className="w-full py-1.5 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50"
+            onClick={() => handleScan("NEW")}
+          >
+            Enviar comando NEW
+          </button>
+        </div>
+      )}
 
       <ModalBlank
         id="info-modal"

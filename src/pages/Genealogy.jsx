@@ -1,8 +1,6 @@
 import icons from "../assets/icons/icons";
-import { useEffect, useState, useRef } from "react";
-import ReactToPrint from "react-to-print";
-import handlePrint from "../printerComponent";
-import BrowserPrintComponent from "../printerComponent";
+import { useEffect, useState } from "react";
+import { Print_Service } from "../printService";
 
 import {
   Add,
@@ -11,6 +9,7 @@ import {
   Box1,
   Category,
   Cd,
+  Code,
   CopySuccess,
   FormatSquare,
   Grid8,
@@ -20,6 +19,8 @@ import {
   Notepad2,
   Scan,
 } from "iconsax-react";
+
+const DEV_PASSWORD = "dev1234";
 
 import Stepper from "@keyvaluesystems/react-vertical-stepper";
 
@@ -32,6 +33,8 @@ import { useSelector, useDispatch } from "react-redux";
 import {
   selectOrderSelected,
   metadataOrderSelected,
+  setOrderSelected,
+  setMetadataOrderSelected,
 } from "../store/slice/orderSelectedSlice";
 
 import {selectGenealogyLog, addEventToGenealogyLog } from "../store/slice/eventsLogSlice";
@@ -42,7 +45,6 @@ import {
   setTestResults,
   setGlobalStatus,
 } from "../store/slice/testResultSlice";
-import LabelPrinting from "../partials/genealogy/LabelPrinting";
 import {
   notifyCondenserScanned,
   notifyProductScanned,
@@ -56,6 +58,7 @@ import {
   selectComponentsJoined,
   setChartDataOrderProgress,
   setComponentsJoined,
+  setPallet,
 } from "../store/slice/palletsSlice";
 import ComponentsTable from "../partials/genealogy/ComponentsTable";
 import PolarChart from "../charts/PolarChart";
@@ -83,9 +86,23 @@ function GenealogyDashboard() {
 
   const [treeData, setTreeData] = useState([]);
 
-  const dispatch = useDispatch();
+  const [deviceList, setDeviceList] = useState([]);
+  const [printer, setPrinter] = useState(null);
 
-  const labelRef = useRef();
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.BrowserPrint) {
+      window.BrowserPrint.getLocalDevices(
+        (devices) => {
+          const printers = devices?.printer ?? [];
+          setDeviceList(printers);
+          if (printers.length > 0) setPrinter(printers[0]);
+        },
+        (err) => console.log("BrowserPrint error:", err)
+      );
+    }
+  }, []);
+
+  const dispatch = useDispatch();
 
   const [currentStepIndexUnion, setCurrentStepIndexUnion] = useState(1)
 
@@ -129,6 +146,17 @@ function GenealogyDashboard() {
   )
   
   useEffect(() => {
+    return () => {
+      dispatch(setOrderSelected({}));
+      dispatch(setMetadataOrderSelected([]));
+      dispatch(setGlobalStatus(""));
+      dispatch(setTestResults([]));
+      dispatch(setComponentsJoined(false));
+      dispatch(setPallet({}));
+    };
+  }, []);
+
+  useEffect(() => {
     // Actualizar las etiquetas cuando orderSelected.aufnr cambie
     console.log("Cambió")
     const newOrder = orderSelected.aufnr;
@@ -154,47 +182,43 @@ function GenealogyDashboard() {
     },
   ];
 
+  const handleScan = (rawCode, modeOverride) => {
+    const code = rawCode.replace(/Shift/g, "").toUpperCase();
+    const activeMode = modeOverride ?? mode;
+    console.log(activeMode, code);
+    if (code === "NEW") {
+      handleNew();
+      return;
+    }
+    if (activeMode === "compressor") {
+      const codeScannedEvent = {
+        text: "Compresor escaneado: " + code,
+        timestamp: new Date().toISOString(),
+      };
+      notifyProductScanned(code);
+      setBarcodeProduct(code);
+      setInfoModalOpen(true);
+      dispatch(addEventToGenealogyLog(codeScannedEvent));
+      setMode("condenser");
+    } else if (activeMode === "condenser") {
+      const codeScannedEvent = {
+        text: "Condensador escaneado: " + code,
+        timestamp: new Date().toISOString(),
+      };
+      setBarcodeCondenser(code);
+      notifyCondenserScanned(code);
+      dispatch(getTestResults(code));
+      dispatch(addEventToGenealogyLog(codeScannedEvent));
+      const getCondenserTestResultsEvent = {
+        text: "Consultando resultados de prueba de condensador: " + code,
+        timestamp: new Date().toISOString(),
+      };
+      dispatch(addEventToGenealogyLog(getCondenserTestResultsEvent));
+    }
+  };
+
   useScanDetection({
-    onComplete: (code) => {
-      console.log(mode);
-      console.log(code.replace(/Shift/g, "").toUpperCase())
-      if(code.replace(/Shift/g, "").toUpperCase() === "NEW"){
-        console.log("Comando NEW detectado")
-        handleNew();
-        return
-      }
-      if (mode === "compressor") {
-        console.log(code);
-        const codeScannedEvent = {
-          text:
-            "Compresor escaneado: " + code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-        notifyProductScanned(code.replace(/Shift/g, "").toUpperCase());
-        setBarcodeProduct(code.replace(/Shift/g, "").toUpperCase());
-        setInfoModalOpen(true);
-        dispatch(addEventToGenealogyLog(codeScannedEvent));
-        setMode("condenser");
-      } else if (mode === "condenser") {
-        const codeScannedEvent = {
-          text:
-            "Condensador escaneado: " +
-            code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-        setBarcodeCondenser(code.replace(/Shift/g, "").toUpperCase());
-        notifyCondenserScanned(code.replace(/Shift/g, "").toUpperCase());
-        dispatch(getTestResults(code.replace(/Shift/g, "").toUpperCase()));
-        dispatch(addEventToGenealogyLog(codeScannedEvent));
-        const getCondenserTestResultsEvent = {
-          text:
-            "Consultando resultados de prueba de condensador: " +
-            code.replace(/Shift/g, "").toUpperCase(),
-          timestamp: new Date().toISOString(),
-        };
-        dispatch(addEventToGenealogyLog(getCondenserTestResultsEvent));
-      }
-    },
+    onComplete: (code) => handleScan(code),
   });
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -405,12 +429,120 @@ function GenealogyDashboard() {
     setInfoModalOpen(true);
   }
 
+  function getMetaValue(id) {
+    if (!Array.isArray(metadata)) return "";
+    return metadata.find((obj) => obj.ID_CARACTMATERIAL === id)?.DE_VALORCARACTMAT ?? "";
+  }
+
+  function formatLabelDate(date) {
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = date
+      .toLocaleString("en-US", { month: "short" })
+      .toUpperCase();
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  function buildLabelZPL() {
+    const qrValue =
+      barcodeCondenser !== "Escanea condensador" ? barcodeCondenser : "ERR";
+    const numeroMaterial = qrValue.slice(0, 9);
+    const numeroSerie = qrValue.slice(qrValue.length - 8);
+    const fecha = formatLabelDate(new Date());
+
+    const modelo = getMetaValue(1);
+    const voltaje = getMetaValue(181);
+    const potencia = getMetaValue(119);
+    const capacidad60LBP = getMetaValue(115);
+    const refrigerante = getMetaValue(3);
+    const corriente = getMetaValue(4);
+    const aceite = getMetaValue(120);
+    const fases = getMetaValue(118);
+
+    return `^XA
+^CI28
+^PW1160
+^LL440
+^LH0,0
+^FO0,0^GB1160,2,2^FS
+^FO0,95^GB1160,2,2^FS
+^FO0,190^GB1160,2,2^FS
+^FO0,285^GB1160,2,2^FS
+^FO0,380^GB1160,2,2^FS
+^FO320,0^GB2,285,2^FS
+^FO320,190^GB2,95,2^FS
+^FO660,285^GB2,95,2^FS
+^FO1010,285^GB2,95,2^FS
+^FT30,65^A0N,60,65^FDEmbraco^FS
+^FT330,25^A0N,15,15^FDMODELO - MODEL^FS
+^FT330,80^A0N,40,40^FD${modelo}^FS
+^FT15,120^A0N,15,15^FDCODIGO - EMBRACO PART NUMBER^FS
+^FT15,175^A0N,60,60^FD${numeroMaterial}^FS
+^FT330,120^A0N,15,15^FDVOLTAJE/FRECUENCIA - VOLTAGE/FREQUENCY^FS
+^FT330,175^A0N,60,60^FD${voltaje}^FS
+^FT15,215^A0N,15,15^FDPOTENCIA^FS
+^FT15,255^A0N,15,15^FDPOWER (HP)^FS
+^FT150,260^A0N,60,60^FD${potencia}^FS
+^FT330,215^A0N,18,18^FDCAPACIDAD - CAPACITY^FS
+^FT330,270^A0N,12,12^FD50Hz LBP^FS
+^FT420,270^A0N,12,12^FD50Hz HBP^FS
+^FT520,270^A0N,12,12^FD60Hz LBP^FS
+^FT610,270^A0N,30,30^FD${capacidad60LBP}^FS
+^FT740,270^A0N,12,12^FD60Hz HBP^FS
+^FT15,310^A0N,12,12^FDREFRIGERANTE^FS
+^FT15,350^A0N,12,12^FDREFRIGERANT^FS
+^FT180,355^A0N,55,55^FD${refrigerante}^FS
+^FT330,310^A0N,15,15^FDCORRIENTE - CURRENT (LRA)^FS
+^FT330,355^A0N,40,40^FD${corriente}^FS
+^FT670,310^A0N,15,15^FDENFRIADOR ACEITE^FS
+^FT670,350^A0N,15,15^FDOIL COOLER^FS
+^FT830,355^A0N,45,45^FD${aceite}^FS
+^FT1020,310^A0N,15,15^FDFASES^FS
+^FT1020,350^A0N,15,15^FDPHASES^FS
+^FT1120,355^A0N,45,45^FD${fases}^FS
+^FO15,395^BY2,2,30^BCN,30,N,N,N^FD${numeroMaterial}^FS
+^FT560,405^A0N,15,15^FD${numeroMaterial}^FS
+^FT560,430^A0N,15,15^FD${numeroSerie}^FS
+^FT740,405^A0N,12,12^FDHECHO^FS
+^FT740,418^A0N,12,12^FDMANUFACTURING^FS
+^FT740,431^A0N,12,12^FDAPODACA-NL MADE IN MEXICO^FS
+^FT990,430^A0N,40,40^FD${fecha}^FS
+^XZ`;
+  }
+
+  function handlePrintZPL() {
+    if (!printer) {
+      alert("Selecciona una impresora antes de imprimir.");
+      return;
+    }
+    const zpl = buildLabelZPL();
+    Print_Service.print(printer, zpl);
+    dispatch(
+      addEventToGenealogyLog({
+        text: "Etiqueta enviada a impresora: " + (printer?.name ?? ""),
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }
+
   const handleTestView = (param) => () => {
     console.log(`Link clicked with parameter: ${param}`);
     setTestView(param);
   };
 
   const [expandedNodes, setExpandedNodes] = useState([]);
+
+  // Dev mode
+  const [devModeActive, setDevModeActive] = useState(
+    () => localStorage.getItem("devMode") === "true"
+  );
+  const [devPasswordInput, setDevPasswordInput] = useState("");
+  const [devPasswordModalOpen, setDevPasswordModalOpen] = useState(false);
+  const [devCompressorInput, setDevCompressorInput] = useState("");
+  const [devCondenserInput, setDevCondenserInput] = useState("");
+
+  const activateDevMode = () => { localStorage.setItem("devMode", "true"); setDevModeActive(true); };
+  const deactivateDevMode = () => { localStorage.removeItem("devMode"); setDevModeActive(false); };
 
   const toggleNode = (nodeId) => {
     if (expandedNodes.includes(nodeId)) {
@@ -495,42 +627,62 @@ function GenealogyDashboard() {
                   </button>
                 )}
 
-                <ReactToPrint
-                  trigger={() => (
-                    <button
-                      onClick={(e) => {}}
-                      className={
-                        globalStatus === 1 && componentsJoined
-                          ? "w-64 h-12 bg-primary rounded text-white text-base flex justify-center hover:bg-green-500"
-                          : "w-64 h-12 bg-secondary rounded text-black text-base flex justify-center hover:text-white disabled:pointer-events-none"
-                      }
-                      disabled={globalStatus != 1 && !componentsJoined}
-                    >
-                      <Barcode
-                        className="mr-2 my-auto bg-transparent"
-                        color="#ffff"
-                        size={20}
-                      />
-                      <span className="bg-transparent my-auto text-white font-semibold hover:bg-green-500">
-                        Imprimir etiqueta
-                      </span>
-                    </button>
+                <select
+                  value={printer ? printer.uid : ""}
+                  onChange={(e) => {
+                    const selected = deviceList.find((d) => d.uid === e.target.value);
+                    setPrinter(selected ?? null);
+                  }}
+                  className="border border-slate-300 rounded h-12 px-2 text-sm text-black bg-white max-w-[12rem]"
+                  title="Impresora Zebra"
+                >
+                  {deviceList.length === 0 && (
+                    <option value="">Sin impresoras</option>
                   )}
-                  content={() => labelRef.current}
-                />
+                  {deviceList.map((device) => (
+                    <option key={device.uid} value={device.uid}>
+                      {device.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={handlePrintZPL}
+                  className={
+                    globalStatus === 1 && componentsJoined && printer
+                      ? "w-64 h-12 bg-primary rounded text-white text-base flex justify-center hover:bg-green-500"
+                      : "w-64 h-12 bg-secondary rounded text-black text-base flex justify-center hover:text-white disabled:pointer-events-none"
+                  }
+                  disabled={globalStatus !== 1 || !componentsJoined || !printer}
+                >
+                  <Barcode
+                    className="mr-2 my-auto bg-transparent"
+                    color="#ffff"
+                    size={20}
+                  />
+                  <span className="bg-transparent my-auto text-white font-semibold hover:bg-green-500">
+                    Imprimir etiqueta
+                  </span>
+                </button>
 
                 
-                <div style={{ display: "none" }}>
-                  <LabelPrinting
-                    ref={labelRef}
-                    qrValue={
-                      barcodeCondenser != "Escanea condensador"
-                        ? barcodeCondenser
-                        : "ERR"
+                <button
+                  onClick={() => {
+                    if (devModeActive) {
+                      deactivateDevMode();
+                    } else {
+                      setDevPasswordInput("");
+                      setDevPasswordModalOpen(true);
                     }
-                    metadata={metadata}
-                  />
-                </div>
+                  }}
+                  title="Modo desarrollador"
+                  className={`border rounded w-10 h-12 flex items-center justify-center ${
+                    devModeActive ? "border-amber-400 bg-amber-50" : "border-slate-300"
+                  }`}
+                >
+                  <Code size={18} color={devModeActive ? "#d97706" : "#94a3b8"} />
+                </button>
+
               </div>
             </div>
           </div>
@@ -594,9 +746,7 @@ function GenealogyDashboard() {
                     <p className="bg-white text-3xl font-bold text-black">
                       {Object.keys(orderSelected).length === 0
                         ? "--------"
-                        : barcodeProduct != "Escanea compresor"
-                        ? barcodeCondenser
-                        : barcodeProduct}
+                        : barcodeCondenser}
                     </p>
                   </div>
                 </div>
@@ -1314,6 +1464,142 @@ function GenealogyDashboard() {
         </ModalAction>
         {/* End */}
       </div>
+
+      {/* Dev mode password modal */}
+      {devPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-80">
+            <h3 className="text-lg font-semibold text-slate-800 mb-1">Modo desarrollador</h3>
+            <p className="text-sm text-slate-500 mb-4">Ingresa la contraseña para activar.</p>
+            <input
+              type="password"
+              autoFocus
+              className="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-3 outline-none focus:border-amber-400"
+              placeholder="Contraseña"
+              value={devPasswordInput}
+              onChange={(e) => setDevPasswordInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (devPasswordInput === DEV_PASSWORD) { activateDevMode(); setDevPasswordModalOpen(false); }
+                  else setDevPasswordInput("");
+                }
+                if (e.key === "Escape") setDevPasswordModalOpen(false);
+              }}
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                className="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+                onClick={() => setDevPasswordModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="px-3 py-1.5 text-sm bg-amber-400 text-white rounded hover:bg-amber-500"
+                onClick={() => {
+                  if (devPasswordInput === DEV_PASSWORD) { activateDevMode(); setDevPasswordModalOpen(false); }
+                  else setDevPasswordInput("");
+                }}
+              >
+                Activar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dev mode floating panel */}
+      {devModeActive && (
+        <div
+          className="fixed bottom-6 right-6 z-50 bg-white border-2 border-amber-400 rounded-xl shadow-2xl p-4 w-72"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <Code size={16} color="#d97706" />
+              <span className="text-sm font-semibold text-amber-600">Dev Mode</span>
+              <span className="text-xs text-slate-400">
+                {mode === "compressor" ? "→ compresor" : "→ condensador"}
+              </span>
+            </div>
+            <button
+              onClick={() => deactivateDevMode()}
+              className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Simular Compresor */}
+          <div className="mb-3">
+            <label className="text-xs text-slate-500 block mb-1">Simular escaneo de Compresor</label>
+            <div className="flex space-x-1">
+              <input
+                className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
+                placeholder="Serial compresor"
+                value={devCompressorInput}
+                onChange={(e) => setDevCompressorInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && devCompressorInput.trim()) {
+                    setMode("compressor");
+                    handleScan(devCompressorInput.trim(), "compressor");
+                    setDevCompressorInput("");
+                  }
+                }}
+              />
+              <button
+                className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
+                disabled={!devCompressorInput.trim()}
+                onClick={() => {
+                  setMode("compressor");
+                  handleScan(devCompressorInput.trim(), "compressor");
+                  setDevCompressorInput("");
+                }}
+              >
+                Scan
+              </button>
+            </div>
+          </div>
+
+          {/* Simular Condensador */}
+          <div className="mb-3">
+            <label className="text-xs text-slate-500 block mb-1">Simular escaneo de Condensador</label>
+            <div className="flex space-x-1">
+              <input
+                className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
+                placeholder="Ej. 515380042826MHTNC"
+                value={devCondenserInput}
+                onChange={(e) => setDevCondenserInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && devCondenserInput.trim()) {
+                    setMode("condenser");
+                    handleScan(devCondenserInput.trim(), "condenser");
+                    setDevCondenserInput("");
+                  }
+                }}
+              />
+              <button
+                className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
+                disabled={!devCondenserInput.trim()}
+                onClick={() => {
+                  setMode("condenser");
+                  handleScan(devCondenserInput.trim(), "condenser");
+                  setDevCondenserInput("");
+                }}
+              >
+                Scan
+              </button>
+            </div>
+          </div>
+
+          {/* Botón NEW */}
+          <button
+            className="w-full py-1.5 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50"
+            onClick={() => handleScan("NEW")}
+          >
+            Enviar comando NEW
+          </button>
+        </div>
+      )}
     </>
   );
 }

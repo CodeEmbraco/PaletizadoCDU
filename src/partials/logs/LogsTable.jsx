@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { API_BASE } from "../../utils/apiBase";
 import { useSelector, useDispatch } from "react-redux";
 
 import {
@@ -20,7 +21,7 @@ import {
   ArrowRight2,
 } from "iconsax-react";
 import DropdownFilter from "../../components/DropdownFilter";
-function LogsTable() {
+function LogsTable({ devMode = false }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [pallets, setPallets] = useState([]);
@@ -33,7 +34,7 @@ function LogsTable() {
   const fetchPallets = async (queryParams) => {
     try {
       const response = await fetch(
-        `http://10.13.225.20:8002/api/v1/paletization/logs/?page=${currentPage}&page_size=10${queryParams}`
+        `${API_BASE()}/api/v1/paletization/logs/?page=${currentPage}&page_size=10${queryParams}`
       );
       const data = await response.json();
       setPallets(data.results.pallets);
@@ -214,9 +215,6 @@ function LogsTable() {
                   </div>
                 </th> */}
                 <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
-                  <div className="font-semibold text-center">Cantidad esperada</div>
-                </th>
-                <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
                   <div className="font-semibold text-center">Cantidad montada</div>
                 </th>
                 <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
@@ -230,6 +228,11 @@ function LogsTable() {
                 <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
                   <div className="font-semibold text-center">Acciones</div>
                 </th>
+                {devMode && (
+                  <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
+                    <div className="font-semibold text-center text-amber-500">DEV</div>
+                  </th>
+                )}
               </tr>
             </thead>
             {/* Table body */}
@@ -253,6 +256,7 @@ function LogsTable() {
                         sendToSAP={element.pallet.send_to_sap}
                         sapStatus={element.pallet.sap_status}
                         sapSuccess={element.pallet.sap_success}
+                        devMode={devMode}
                       />
                     );
                   })

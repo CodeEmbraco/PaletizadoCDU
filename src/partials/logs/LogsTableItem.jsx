@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { API_BASE } from "../../utils/apiBase";
 
 import { useDispatch, useSelector } from "react-redux";
 
@@ -21,29 +22,39 @@ function LogsItem(props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const dispatch = useDispatch();
   const [dangerModalOpen, setDangerModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const palletSelected = useSelector(selectPallet);
-  const [isLoading, setIsloading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [devInterface, setDevInterface] = useState("6");
+  const [devFase, setDevFase] = useState("");
+  const [devComplemento, setDevComplemento] = useState(" ");
 
-  const handleDispatch = async () => {
-    setIsLoading(true);
+  const handleDelete = async () => {
     try {
-      await dispatch(reprocessPallet(props.identifier));
+      await fetch(
+        `${API_BASE()}/api/v1/paletization/pallets/${props.identifier}/`,
+        { method: "DELETE" }
+      );
+      props.fetchPallets("&workstation=MXCDU01");
     } catch (error) {
-      // Maneja los errores aquí si es necesario
-      console.log("Error al reprocesar el lote: " + error);
+      console.error("Error al eliminar el pallet:", error);
     }
-    setIsLoading(false);
   };
 
-  const handleReprocess = () => {
-    // Llama a la acción para eliminar el componente por su id
-    setIsloading(true);
-    handleDispatch();
-    setTimeout(() => {
-      props.fetchPallets();
-    }, 5000);
-   
-    //dispatch(unmountComponent(props));
+  const handleReprocess = async () => {
+    setIsLoading(true);
+    try {
+      const interfaceVal = props.devMode ? devInterface : undefined;
+      const faseVal = props.devMode ? devFase : undefined;
+      const complementoVal = props.devMode ? devComplemento : undefined;
+      await dispatch(reprocessPallet(props.identifier, interfaceVal, faseVal, complementoVal));
+      await props.fetchPallets("&workstation=MXCDU01");
+    } catch (error) {
+      console.log("Error al reprocesar el lote: " + error);
+    } finally {
+      setIsLoading(false);
+      setDangerModalOpen(false);
+    }
   };
 
   // Función para formatear la fecha y hora
@@ -105,11 +116,6 @@ function LogsItem(props) {
         </td>
         <td className="px-2 first:pl-5 last:pr-5 py-6 whitespace-nowrap">
           <div className="text-center text-md font-medium">
-            {props.quantity}
-          </div>
-        </td>
-        <td className="px-2 first:pl-5 last:pr-5 py-6 whitespace-nowrap">
-          <div className="text-center text-md font-medium">
             {props.mounted_components_count}
           </div>
         </td>
@@ -133,9 +139,19 @@ function LogsItem(props) {
             )}
           </div>
         </td>
+        {props.devMode && (
+          <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px">
+            <button
+              onClick={(e) => { e.stopPropagation(); setDeleteModalOpen(true); }}
+              className="text-center font-semibold text-red-500 border btn border-red-200 hover:bg-red-50 w-full"
+            >
+              Eliminar
+            </button>
+          </td>
+        )}
         <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px">
           {/* Menu button */}
-          {props.sapSuccess ? (
+          {props.sapSuccess && !props.devMode ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -191,8 +207,6 @@ function LogsItem(props) {
           <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap"><div className="font-medium">Condensador (Material)</div></th>
           <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap"><div className="font-medium">Compresor (Serial)</div></th>
           <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap"><div className="font-medium">Compresor (Material)</div></th>
-          <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap"><div className="font-medium">Enviado a SAP</div></th>
-          <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap"><div className="font-medium">SAP Status</div></th>
         </tr>
       </thead>
       <tbody>
@@ -205,8 +219,6 @@ function LogsItem(props) {
             <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px font-medium text-gray">{component.condenser_material_code}</td>
             <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px font-medium text-gray">{component.compressor_unit_serial}</td>
             <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px font-medium text-gray">{component.compressor_material_code}</td>
-            <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px font-medium text-gray">{component.send_to_sap ? 'Si' : 'No'}</td>
-            <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px font-medium text-gray">{component.sap_status}</td>
           </tr>
         )})}
       </tbody>
@@ -216,6 +228,47 @@ function LogsItem(props) {
     
   </td>
 </tr>
+      {/* Delete Modal (dev mode) */}
+      <ModalBlank
+        id="delete-modal"
+        modalOpen={deleteModalOpen}
+        setModalOpen={setDeleteModalOpen}
+      >
+        <div className="p-5 flex space-x-4">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-red-100">
+            <svg className="w-4 h-4 shrink-0 fill-current text-red-500" viewBox="0 0 16 16">
+              <path d="M8 0C3.6 0 0 3.6 0 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8zm3 10.6L9.6 12 8 10.4 6.4 12 5 10.6 6.6 9 5 7.4 6.4 6 8 7.6 9.6 6 11 7.4 9.4 9 11 10.6z" />
+            </svg>
+          </div>
+          <div>
+            <div className="mb-2">
+              <div className="text-lg font-semibold text-slate-800">
+                Eliminar pallet: {props.identifier}
+              </div>
+            </div>
+            <div className="text-sm mb-10">
+              <p className="text-black">
+                ¿Estás seguro? Esta acción eliminará el pallet y todos sus componentes montados de forma permanente.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end space-x-2">
+              <button
+                className="btn-sm border-slate-200 hover:border-slate-300 text-slate-600"
+                onClick={(e) => { e.stopPropagation(); setDeleteModalOpen(false); }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-sm bg-red-500 hover:bg-red-600 text-white"
+                onClick={(e) => { e.stopPropagation(); setDeleteModalOpen(false); handleDelete(); }}
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      </ModalBlank>
+
       {/* Danger Modal */}
       <div className="">
         {/* Start */}
@@ -223,7 +276,7 @@ function LogsItem(props) {
         <ModalBlank
           id="danger-modal"
           modalOpen={dangerModalOpen}
-          setModalOpen={setDangerModalOpen}
+          setModalOpen={isLoading ? () => {} : setDangerModalOpen}
         >
           <div className="p-5 flex space-x-4">
             {/* Icon */}
@@ -250,28 +303,66 @@ function LogsItem(props) {
                     ¿Estás seguro que deseas reprocesar el lote:{" "}
                     {props.identifier}? Esta acción enviará el lote de nuevo al sistema SAP.
                   </p>
+                  {props.devMode && (
+                    <div className="mt-3 pt-3 border-t border-amber-200 space-y-2">
+                      <p className="text-xs font-semibold text-amber-600">Parámetros Dev</p>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs text-slate-500 w-20">Interface</label>
+                        <input
+                          className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-amber-400"
+                          value={devInterface}
+                          onChange={(e) => setDevInterface(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs text-slate-500 w-20">Fase</label>
+                        <input
+                          className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-amber-400"
+                          value={devFase}
+                          onChange={(e) => setDevFase(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs text-slate-500 w-20">Complemento</label>
+                        <input
+                          className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-amber-400"
+                          value={devComplemento}
+                          onChange={(e) => setDevComplemento(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* Modal footer */}
               <div className="flex flex-wrap justify-end space-x-2">
                 <button
-                  className="btn-sm border-slate-200 hover:border-slate-300 text-slate-600"
+                  className="btn-sm border-slate-200 hover:border-slate-300 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDangerModalOpen(false);
                   }}
+                  disabled={isLoading}
                 >
                   Cancelar
                 </button>
                 <button
-                  className="btn-sm bg-primary hover:bg-primary-500 text-white"
+                  className="btn-sm bg-primary hover:bg-primary-500 text-white disabled:opacity-70 disabled:cursor-not-allowed flex items-center"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setDangerModalOpen(false);
                     handleReprocess();
                   }}
+                  disabled={isLoading}
                 >
-                  Si, reprocesar
+                  {isLoading && (
+                    <svg
+                      className="animate-spin bg-transparent w-4 h-4 fill-current shrink-0 mr-2"
+                      viewBox="0 0 16 16"
+                    >
+                      <path d="M8 16a7.928 7.928 0 01-3.428-.77l.857-1.807A6.006 6.006 0 0014 8c0-3.309-2.691-6-6-6a6.006 6.006 0 00-5.422 8.572l-1.806.859A7.929 7.929 0 010 8c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z" />
+                    </svg>
+                  )}
+                  {isLoading ? "Reprocesando..." : "Si, reprocesar"}
                 </button>
               </div>
             </div>
