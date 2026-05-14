@@ -3,6 +3,8 @@ import { toast } from 'react-hot-toast';
 // Toast de éxito
 export const notifyPalletScanned = (code) => toast.success('Pallet escaneado: ' + code);
 
+export const notifyPalletProductValidated = (code) => toast.success('Producto del pallet validado: ' + code, { style: {} });
+
 export const notifyOrderSelected = (number) => toast.success(`Órden ${number} seleccionada`);
 
 export const notifyProductScanned = (code) => toast.success('Compresor escaneado: ' + code, { style: {} });

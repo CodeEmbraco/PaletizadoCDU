@@ -61,8 +61,12 @@ import ComponentsTable from "../partials/paletization/ComponentsTable";
 import {
   notifyPalletScanned,
   notifyProductScanned,
+  notifyError,
+  notifyPalletProductValidated,
 } from "../partials/paletization/Toasts";
 import ModalBlank from "../components/ModalBlank";
+import CompressorMismatchModal from "../components/CompressorMismatchModal";
+import PalletProductMismatchModal from "../components/PalletProductMismatchModal";
 
 
 function PaletizationView() {
@@ -93,6 +97,21 @@ function PaletizationView() {
   const [hasProcessed, setHasProcessed] = useState(false);
   const [isProcessingPallet, setIsProcessingPallet] = useState(false);
 
+  const [mismatchOpen, setMismatchOpen] = useState(false);
+  const [mismatchInfo, setMismatchInfo] = useState({
+    expectedMaterial: "",
+    scannedSerial: "",
+    expectedPrefix: "",
+    scannedPrefix: "",
+  });
+
+  const [palletProductValidated, setPalletProductValidated] = useState(false);
+  const [palletProductMismatchOpen, setPalletProductMismatchOpen] = useState(false);
+  const [palletProductMismatchInfo, setPalletProductMismatchInfo] = useState({
+    expectedProduct: "",
+    scannedProduct: "",
+  });
+
   useEffect(() => {
     return () => {
       dispatch(setOrderSelected({}));
@@ -108,6 +127,7 @@ function PaletizationView() {
 
   useEffect(() => {
     setHasProcessed(false);
+    setPalletProductValidated(false);
   }, [palletSelected?.identifier]);
 
   const handleSelectedItems = (selectedItems) => {
@@ -121,7 +141,73 @@ function PaletizationView() {
       handleNew();
       return;
     }
+
+    const palletIdentifier = palletSelected?.identifier;
+    const hasPallet =
+      palletIdentifier &&
+      palletIdentifier !== "undefined" &&
+      String(palletIdentifier).trim() !== "";
+    const expectedProductCode = (orderSelected?.matnr?.slice(-9) ?? "").toUpperCase();
+
+    // Estado intermedio: ya hay pallet pero el producto del pallet aún no se ha validado.
+    // El siguiente escaneo se interpreta como el código de producto impreso en la etiqueta del pallet.
+    if (hasPallet && !palletProductValidated) {
+      if (code.length >= 11) {
+        notifyError(
+          "Escanea primero el código de producto del pallet antes de montar un componente"
+        );
+        dispatch(
+          addEventToPaletizationLog({
+            text:
+              "Intento de montar componente sin validar producto del pallet: " +
+              code,
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
+      if (code === expectedProductCode) {
+        setPalletProductValidated(true);
+        notifyPalletProductValidated(code);
+        dispatch(
+          addEventToPaletizationLog({
+            text: "Producto del pallet validado: " + code,
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
+      setPalletProductMismatchInfo({
+        expectedProduct: expectedProductCode,
+        scannedProduct: code,
+      });
+      setPalletProductMismatchOpen(true);
+      dispatch(
+        addEventToPaletizationLog({
+          text:
+            "Producto del pallet RECHAZADO. Esperado: " +
+            expectedProductCode +
+            " | Escaneado: " +
+            code,
+          timestamp: new Date().toISOString(),
+        })
+      );
+      return;
+    }
+
     if (code.length >= 11) {
+      // Bloquear el escaneo de componente si aún no se ha escaneado un pallet válido.
+      // Evita montar componentes contra un pallet "undefined" que después queda atorado en BD.
+      if (!hasPallet) {
+        notifyError("Escanea primero el pallet antes de montar un componente");
+        dispatch(
+          addEventToPaletizationLog({
+            text: "Intento de montar componente sin pallet escaneado: " + code,
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
       const codeScannedEvent = {
         text: "Producto escaneado: " + code,
         timestamp: new Date().toISOString(),
@@ -143,6 +229,42 @@ function PaletizationView() {
       const compressorComponent = orderSelected.components?.find((c) => c.tipo === "C");
       const compressorMaterial =
         compressorComponent?.matnr || response?.compressor_material_code || "";
+
+      const compressorSerial = response?.compressor_unit_serial ?? "";
+      const cleaned = String(compressorMaterial).replace(/^0+/, "");
+      const dotIdx = cleaned.search(/[.…]/);
+      const expectedPrefix =
+        dotIdx > 0 ? cleaned.slice(0, dotIdx) : cleaned.slice(-9).slice(0, 7);
+      const scannedPrefix = compressorSerial.slice(0, expectedPrefix.length);
+      if (
+        expectedPrefix &&
+        scannedPrefix &&
+        expectedPrefix !== scannedPrefix
+      ) {
+        setMismatchInfo({
+          expectedMaterial: cleaned,
+          scannedSerial: compressorSerial,
+          expectedPrefix,
+          scannedPrefix,
+        });
+        setMismatchOpen(true);
+        dispatch(
+          addEventToPaletizationLog({
+            text:
+              "Componente RECHAZADO por material de compresor no coincide. Esperado: " +
+              expectedPrefix +
+              " | Compresor: " +
+              scannedPrefix +
+              " (" +
+              compressorSerial +
+              ") | Condenser: " +
+              code,
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
+
       const data = {
         palette: palletSelected.identifier,
         condenser: code,
@@ -270,8 +392,13 @@ function PaletizationView() {
     dispatch(setTestResults([]));
     dispatch(setComponentsJoined(false));
     dispatch(setComponents([]));
+    dispatch(setPallet({}));
     dispatch(setPalletNotified({}));
     setHasProcessed(false);
+    setPalletProductValidated(false);
+    setPalletProductMismatchOpen(false);
+    setPalletProductMismatchInfo({ expectedProduct: "", scannedProduct: "" });
+    setMismatchOpen(false);
     const handleNewEvent = {
       text:
         "Comando NUEVO detectado. Proceso reiniciado." ,
@@ -937,6 +1064,22 @@ function PaletizationView() {
           </button>
         </div>
       )}
+
+      <CompressorMismatchModal
+        open={mismatchOpen}
+        onClose={() => setMismatchOpen(false)}
+        expectedMaterial={mismatchInfo.expectedMaterial}
+        scannedSerial={mismatchInfo.scannedSerial}
+        expectedPrefix={mismatchInfo.expectedPrefix}
+        scannedPrefix={mismatchInfo.scannedPrefix}
+      />
+
+      <PalletProductMismatchModal
+        open={palletProductMismatchOpen}
+        onClose={() => setPalletProductMismatchOpen(false)}
+        expectedProduct={palletProductMismatchInfo.expectedProduct}
+        scannedProduct={palletProductMismatchInfo.scannedProduct}
+      />
 
       <ModalBlank
         id="info-modal"

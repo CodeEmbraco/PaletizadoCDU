@@ -51,6 +51,7 @@ import {
 } from "../partials/paletization/Toasts";
 import ModalBlank from "../components/ModalBlank";
 import ModalAction from "../components/ModalAction";
+import CompressorMismatchModal from "../components/CompressorMismatchModal";
 import {
   joinComponents,
   selectChartDataOrderProgress,
@@ -83,6 +84,14 @@ function GenealogyDashboard() {
   const [barcodeCondenser, setBarcodeCondenser] = useState(
     "Escanea condensador"
   );
+
+  const [mismatchOpen, setMismatchOpen] = useState(false);
+  const [mismatchInfo, setMismatchInfo] = useState({
+    expectedMaterial: "",
+    scannedSerial: "",
+    expectedPrefix: "",
+    scannedPrefix: "",
+  });
 
   const [treeData, setTreeData] = useState([]);
 
@@ -191,6 +200,35 @@ function GenealogyDashboard() {
       return;
     }
     if (activeMode === "compressor") {
+      const orderCompressorMaterial = orderSelected.components?.[0]?.matnr ?? "";
+      const cleaned = String(orderCompressorMaterial).replace(/^0+/, "");
+      const dotIdx = cleaned.search(/[.…]/);
+      const expectedPrefix =
+        dotIdx > 0 ? cleaned.slice(0, dotIdx) : cleaned.slice(-9).slice(0, 7);
+      const scannedPrefix = code.slice(0, expectedPrefix.length);
+      if (expectedPrefix && scannedPrefix && expectedPrefix !== scannedPrefix) {
+        setMismatchInfo({
+          expectedMaterial: cleaned,
+          scannedSerial: code,
+          expectedPrefix,
+          scannedPrefix,
+        });
+        setMismatchOpen(true);
+        dispatch(
+          addEventToGenealogyLog({
+            text:
+              "Compresor RECHAZADO por material no coincide. Esperado: " +
+              expectedPrefix +
+              " | Escaneado: " +
+              scannedPrefix +
+              " (" +
+              code +
+              ")",
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
       const codeScannedEvent = {
         text: "Compresor escaneado: " + code,
         timestamp: new Date().toISOString(),
@@ -439,7 +477,7 @@ function GenealogyDashboard() {
     const month = date
       .toLocaleString("en-US", { month: "short" })
       .toUpperCase();
-    const year = date.getFullYear();
+    const year = String(date.getFullYear()).slice(-2);
     return `${day}/${month}/${year}`;
   }
 
@@ -462,52 +500,52 @@ function GenealogyDashboard() {
 
     return `^XA
 ^CI28
-^PW1160
-^LL440
+^PW1137
+^LL406
 ^LH0,0
-^FO0,0^GB1160,2,2^FS
-^FO0,95^GB1160,2,2^FS
-^FO0,190^GB1160,2,2^FS
-^FO0,285^GB1160,2,2^FS
-^FO0,380^GB1160,2,2^FS
-^FO320,0^GB2,285,2^FS
-^FO320,190^GB2,95,2^FS
-^FO660,285^GB2,95,2^FS
-^FO1010,285^GB2,95,2^FS
-^FT30,65^A0N,60,65^FDEmbraco^FS
-^FT330,25^A0N,15,15^FDMODELO - MODEL^FS
+^FO0,0^GB1135,404,3^FS
+^FO0,85^GB1137,2,2^FS
+^FO0,175^GB1137,2,2^FS
+^FO0,265^GB1137,2,2^FS
+^FO0,350^GB1137,2,2^FS
+^FO310,0^GB2,265,2^FS
+^FO310,175^GB2,90,2^FS
+^FO650,265^GB2,85,2^FS
+^FO980,265^GB2,85,2^FS
+^FT25,60^A0N,55,60^FDEmbraco^FS
+^FT320,25^A0N,14,14^FDMODELO - MODEL^FS
 ^FT330,80^A0N,40,40^FD${modelo}^FS
-^FT15,120^A0N,15,15^FDCODIGO - EMBRACO PART NUMBER^FS
-^FT15,175^A0N,60,60^FD${numeroMaterial}^FS
-^FT330,120^A0N,15,15^FDVOLTAJE/FRECUENCIA - VOLTAGE/FREQUENCY^FS
-^FT330,175^A0N,60,60^FD${voltaje}^FS
-^FT15,215^A0N,15,15^FDPOTENCIA^FS
-^FT15,255^A0N,15,15^FDPOWER (HP)^FS
-^FT150,260^A0N,60,60^FD${potencia}^FS
-^FT330,215^A0N,18,18^FDCAPACIDAD - CAPACITY^FS
-^FT330,270^A0N,12,12^FD50Hz LBP^FS
-^FT420,270^A0N,12,12^FD50Hz HBP^FS
-^FT520,270^A0N,12,12^FD60Hz LBP^FS
-^FT610,270^A0N,30,30^FD${capacidad60LBP}^FS
-^FT740,270^A0N,12,12^FD60Hz HBP^FS
-^FT15,310^A0N,12,12^FDREFRIGERANTE^FS
-^FT15,350^A0N,12,12^FDREFRIGERANT^FS
-^FT180,355^A0N,55,55^FD${refrigerante}^FS
-^FT330,310^A0N,15,15^FDCORRIENTE - CURRENT (LRA)^FS
-^FT330,355^A0N,40,40^FD${corriente}^FS
-^FT670,310^A0N,15,15^FDENFRIADOR ACEITE^FS
-^FT670,350^A0N,15,15^FDOIL COOLER^FS
-^FT830,355^A0N,45,45^FD${aceite}^FS
-^FT1020,310^A0N,15,15^FDFASES^FS
-^FT1020,350^A0N,15,15^FDPHASES^FS
-^FT1120,355^A0N,45,45^FD${fases}^FS
-^FO15,395^BY2,2,30^BCN,30,N,N,N^FD${numeroMaterial}^FS
-^FT560,405^A0N,15,15^FD${numeroMaterial}^FS
-^FT560,430^A0N,15,15^FD${numeroSerie}^FS
-^FT710,405^A0N,12,12^FDHECHO^FS
-^FT710,418^A0N,12,12^FDMANUFACTURING^FS
-^FT710,431^A0N,12,12^FDASSEMBLED IN MEXICO WITH FOREIGN COMPONENTS^FS
-^FT990,430^A0N,40,40^FD${fecha}^FS
+^FT15,110^A0N,15,15^FDCODIGO - EMBRACO PART NUMBER^FS
+^FT15,160^A0N,55,55^FD${numeroMaterial}^FS
+^FT325,110^A0N,15,15^FDVOLTAJE/FRECUENCIA - VOLTAGE/FREQUENCY^FS
+^FT325,160^A0N,55,55^FD${voltaje}^FS
+^FT15,200^A0N,14,14^FDPOTENCIA^FS
+^FT15,240^A0N,14,14^FDPOWER (HP)^FS
+^FT140,250^A0N,60,60^FD${potencia}^FS
+^FT325,200^A0N,16,16^FDCAPACIDAD - CAPACITY^FS
+^FT325,250^A0N,12,12^FD50Hz LBP^FS
+^FT410,250^A0N,12,12^FD50Hz HBP^FS
+^FT500,250^A0N,12,12^FD60Hz LBP^FS
+^FT580,250^A0N,30,30^FD${capacidad60LBP}^FS
+^FT710,250^A0N,12,12^FD60Hz HBP^FS
+^FT15,290^A0N,12,12^FDREFRIGERANTE^FS
+^FT15,330^A0N,12,12^FDREFRIGERANT^FS
+^FT160,335^A0N,50,50^FD${refrigerante}^FS
+^FT325,290^A0N,15,15^FDCORRIENTE - CURRENT (LRA)^FS
+^FT325,335^A0N,40,40^FD${corriente}^FS
+^FT660,290^A0N,14,14^FDENFRIADOR ACEITE^FS
+^FT660,330^A0N,14,14^FDOIL COOLER^FS
+^FT800,340^A0N,45,45^FD${aceite}^FS
+^FT990,290^A0N,14,14^FDFASES^FS
+^FT990,330^A0N,14,14^FDPHASES^FS
+^FT1080,340^A0N,45,45^FD${fases}^FS
+^FO15,360^BY2,2,25^BCN,25,N,N,N^FD${numeroMaterial}${numeroSerie}^FS
+^FT530,375^A0N,14,14^FD${numeroMaterial}^FS
+^FT530,395^A0N,14,14^FD${numeroSerie}^FS
+^FT680,373^A0N,11,11^FDHECHO^FS
+^FT680,384^A0N,11,11^FDMANUFACTURING^FS
+^FT680,396^A0N,11,11^FDASSEMBLED IN MEXICO WITH FOREIGN COMPONENTS^FS
+^FT960,395^A0N,38,38^FD${fecha}^FS
 ^XZ`;
   }
 
@@ -1601,6 +1639,15 @@ function GenealogyDashboard() {
           </button>
         </div>
       )}
+
+      <CompressorMismatchModal
+        open={mismatchOpen}
+        onClose={() => setMismatchOpen(false)}
+        expectedMaterial={mismatchInfo.expectedMaterial}
+        scannedSerial={mismatchInfo.scannedSerial}
+        expectedPrefix={mismatchInfo.expectedPrefix}
+        scannedPrefix={mismatchInfo.scannedPrefix}
+      />
     </>
   );
 }
