@@ -47,7 +47,7 @@ function LogsItem(props) {
       const interfaceVal = props.devMode ? devInterface : undefined;
       const faseVal = props.devMode ? devFase : undefined;
       const complementoVal = props.devMode ? devComplemento : undefined;
-      await dispatch(reprocessPallet(props.identifier, interfaceVal, faseVal, complementoVal));
+      await dispatch(reprocessPallet(props.identifier, props.mounted_components_count, interfaceVal, faseVal, complementoVal));
       await props.fetchPallets("&workstation=MXCDU01");
     } catch (error) {
       console.log("Error al reprocesar el lote: " + error);

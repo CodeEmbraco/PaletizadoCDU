@@ -361,9 +361,10 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
      .catch((error) => endpointsCodes(error, dispatch, setNotFound));
   }
 
-  export const reprocessPallet = (palletIdentifier, interfaceVal, fase, complemento) => async (dispatch) => {
+  export const reprocessPallet = (palletIdentifier, qty, interfaceVal, fase, complemento) => async (dispatch) => {
     const data = {
       pallet: palletIdentifier,
+      qty,
       ...(interfaceVal !== undefined && { interface: interfaceVal }),
       ...(fase !== undefined && { fase }),
       ...(complemento !== undefined && { complemento }),
