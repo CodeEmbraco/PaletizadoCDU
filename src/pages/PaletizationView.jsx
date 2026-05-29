@@ -96,6 +96,7 @@ function PaletizationView() {
 
   const [hasProcessed, setHasProcessed] = useState(false);
   const [isProcessingPallet, setIsProcessingPallet] = useState(false);
+  const [isPalletCreating, setIsPalletCreating] = useState(false);
 
   const [mismatchOpen, setMismatchOpen] = useState(false);
   const [mismatchInfo, setMismatchInfo] = useState({
@@ -128,6 +129,10 @@ function PaletizationView() {
   useEffect(() => {
     setHasProcessed(false);
     setPalletProductValidated(false);
+    // El API confirmó el pallet — liberar el bloqueo de escaneo
+    if (palletSelected?.identifier) {
+      setIsPalletCreating(false);
+    }
   }, [palletSelected?.identifier]);
 
   const handleSelectedItems = (selectedItems) => {
@@ -139,6 +144,12 @@ function PaletizationView() {
     console.log(code);
     if (code === "NEW") {
       handleNew();
+      return;
+    }
+
+    // Bloquear escaneos mientras el API confirma el pallet recién escaneado
+    if (isPalletCreating) {
+      notifyError("Esperando confirmación del pallet, intenta de nuevo en un momento.");
       return;
     }
 
@@ -275,18 +286,31 @@ function PaletizationView() {
       console.log(data);
       dispatch(mountComponent(data));
     } else {
+      // Evitar que el código de producto de la orden se trate como pallet
+      if (expectedProductCode && code === expectedProductCode) {
+        notifyError("Ese es el código de producto, no el pallet. Escanea primero el código de barras del pallet.");
+        dispatch(
+          addEventToPaletizationLog({
+            text: "Intento de escanear código de producto como pallet: " + code,
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
       const codeScannedEvent = {
         text: "Pallet escaneado: " + code,
         timestamp: new Date().toISOString(),
       };
       setBarcodePallet(code);
+      setIsPalletCreating(true);
       dispatch(addEventToPaletizationLog(codeScannedEvent));
       dispatch(
         createPallet(
           orderSelected.aufnr,
           code,
           orderSelected.matnr.slice(-9),
-          metadata.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT
+          metadata.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT,
+          () => setIsPalletCreating(false)
         )
       );
 
@@ -395,6 +419,7 @@ function PaletizationView() {
     dispatch(setPallet({}));
     dispatch(setPalletNotified({}));
     setHasProcessed(false);
+    setIsPalletCreating(false);
     setPalletProductValidated(false);
     setPalletProductMismatchOpen(false);
     setPalletProductMismatchInfo({ expectedProduct: "", scannedProduct: "" });

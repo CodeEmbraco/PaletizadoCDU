@@ -226,19 +226,13 @@ export const getCompressor = (condenserSerial) => async (dispatch) => {
 };
 
 
-export const createPallet = (order, barcode, product, quantity) => (dispatch) => {
-    //dispatch(setLoading(true));
-    // const startFetchOrders = {
-    //   text: 'Obteniendo órdenes desde SAP',
-    //   timestamp: new Date().toISOString(),
-    // };
-    // dispatch(addEvent(startFetchOrders));
+export const createPallet = (order, barcode, product, quantity, onError) => (dispatch) => {
     const palletData = {
         workstation: "MXCDU01",
         order: order,
         identifier: barcode,
         product: product,
-        quantity: quantity
+        quantity: Number(quantity),
     }
     axios
       .post(`${API_BASE()}/api/v1/paletization/pallets/`, palletData)
@@ -259,7 +253,10 @@ export const createPallet = (order, barcode, product, quantity) => (dispatch) =>
           dispatch(setPalletNotified({}));
         }
       })
-      .catch((error) => endpointsCodes(error, dispatch, setNotFound));
+      .catch((error) => {
+        onError?.();
+        endpointsCodes(error, dispatch, setNotFound);
+      });
   };
 
   export const getAllComponents = (palletIdentifier) => (dispatch) => {

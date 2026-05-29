@@ -25,7 +25,7 @@ function LogsItem(props) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const palletSelected = useSelector(selectPallet);
   const [isLoading, setIsLoading] = useState(false);
-  const [devInterface, setDevInterface] = useState("6");
+  const [devInterface, setDevInterface] = useState("F");
   const [devFase, setDevFase] = useState("");
   const [devComplemento, setDevComplemento] = useState(" ");
 
@@ -44,7 +44,7 @@ function LogsItem(props) {
   const handleReprocess = async () => {
     setIsLoading(true);
     try {
-      const interfaceVal = props.devMode ? devInterface : undefined;
+      const interfaceVal = props.devMode ? devInterface : "F";
       const faseVal = props.devMode ? devFase : undefined;
       const complementoVal = props.devMode ? devComplemento : undefined;
       await dispatch(reprocessPallet(props.identifier, props.mounted_components_count, interfaceVal, faseVal, complementoVal));
