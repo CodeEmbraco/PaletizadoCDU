@@ -48,7 +48,7 @@ function ComponentsItem(props) {
       </td>
       <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px">
         {/* Menu button */}
-        {props.sendToSAP ? null : <button aria-controls="danger-modal" onClick={(e) => { e.stopPropagation(); setDangerModalOpen(true); }} className="text-center font-semibold text-red-500">Desmontar</button>}
+        {props.sendToSAP || props.locked ? null : <button aria-controls="danger-modal" onClick={(e) => { e.stopPropagation(); setDangerModalOpen(true); }} className="text-center font-semibold text-red-500">Desmontar</button>}
       </td>
     </tr>
      {/* Danger Modal */}

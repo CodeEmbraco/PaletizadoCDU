@@ -67,6 +67,7 @@ import {
 import ModalBlank from "../components/ModalBlank";
 import CompressorMismatchModal from "../components/CompressorMismatchModal";
 import PalletProductMismatchModal from "../components/PalletProductMismatchModal";
+import InvalidOrderModal from "../components/InvalidOrderModal";
 
 
 function PaletizationView() {
@@ -113,6 +114,44 @@ function PaletizationView() {
     scannedProduct: "",
   });
 
+  // El pallet ya fue notificado a SAP: el trabajo terminó y queda congelado
+  // (no se permite montar, desmontar ni editar la cantidad).
+  const isPalletProcessed =
+    !!palletSelected?.identifier &&
+    palletNotified?.ICharg === palletSelected?.identifier;
+
+  // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C").
+  // Sin ese material no hay contra qué validar los escaneos, así que se bloquea
+  // todo el flujo hasta descartar la orden.
+  const orderInvalid =
+    Object.keys(orderSelected).length > 0 &&
+    !(orderSelected.components ?? []).some((c) => c?.tipo === "C" && c?.matnr);
+
+  useEffect(() => {
+    if (!orderInvalid) return;
+    dispatch(
+      addEventToPaletizationLog({
+        text:
+          "Orden " +
+          orderSelected.aufnr +
+          ' BLOQUEADA: incompleta, no contiene componente de compresor (tipo "C").',
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }, [orderInvalid, orderSelected.aufnr]);
+
+  function handleDiscardInvalidOrder() {
+    dispatch(
+      addEventToPaletizationLog({
+        text: "Orden incompleta descartada: " + orderSelected.aufnr,
+        timestamp: new Date().toISOString(),
+      })
+    );
+    dispatch(setOrderSelected({}));
+    dispatch(setMetadataOrderSelected([]));
+    handleNew();
+  }
+
   useEffect(() => {
     return () => {
       dispatch(setOrderSelected({}));
@@ -147,9 +186,36 @@ function PaletizationView() {
       return;
     }
 
+    // Orden incompleta: no se permite escanear nada hasta descartarla
+    if (orderInvalid) {
+      notifyError(
+        "Orden incompleta: no contiene el componente de compresor. Descártala y selecciona otra orden."
+      );
+      dispatch(
+        addEventToPaletizationLog({
+          text: "Escaneo ignorado por orden incompleta: " + code,
+          timestamp: new Date().toISOString(),
+        })
+      );
+      return;
+    }
+
     // Bloquear escaneos mientras el API confirma el pallet recién escaneado
     if (isPalletCreating) {
       notifyError("Esperando confirmación del pallet, intenta de nuevo en un momento.");
+      return;
+    }
+
+    // El pallet ya fue procesado/notificado a SAP: queda congelado.
+    // No se montan más componentes; para iniciar otro hay que presionar "Nuevo".
+    if (isPalletProcessed) {
+      notifyError('El pallet ya fue procesado. Presiona "Nuevo" para iniciar otro.');
+      dispatch(
+        addEventToPaletizationLog({
+          text: "Escaneo ignorado: el pallet ya fue procesado. Código: " + code,
+          timestamp: new Date().toISOString(),
+        })
+      );
       return;
     }
 
@@ -429,7 +495,7 @@ function PaletizationView() {
         "Comando NUEVO detectado. Proceso reiniciado." ,
       timestamp: new Date().toISOString(),
     };
-    dispatch(addEventToGenealogyLog(handleNewEvent));
+    dispatch(addEventToPaletizationLog(handleNewEvent));
   }
 
   async function handleNotify() {
@@ -469,7 +535,7 @@ function PaletizationView() {
 
       const childNode = {
         id: 2,
-        label: obj.components[0]?.matnr ?? "",
+        label: obj.components?.[0]?.matnr ?? "",
       };
 
       parentNode.children.push(childNode);
@@ -542,6 +608,8 @@ function PaletizationView() {
   };
 
   function handlePalletQtyClick() {
+    // No permitir editar la cantidad si el pallet ya fue procesado
+    if (isPalletProcessed) return;
     const current = metadata?.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT ?? "";
     setPalletQtyInput(current);
     setEditingPalletQty(true);
@@ -752,9 +820,17 @@ function PaletizationView() {
                         />
                       ) : (
                         <p
-                          className="bg-white text-3xl font-bold text-black cursor-pointer hover:text-primary"
+                          className={`bg-white text-3xl font-bold text-black ${
+                            isPalletProcessed
+                              ? "cursor-default"
+                              : "cursor-pointer hover:text-primary"
+                          }`}
                           onClick={handlePalletQtyClick}
-                          title="Click para editar"
+                          title={
+                            isPalletProcessed
+                              ? "Pallet procesado, cantidad bloqueada"
+                              : "Click para editar"
+                          }
                         >
                           {Array.isArray(metadata) && metadata.length > 0
                             ? metadata.find(
@@ -1104,6 +1180,13 @@ function PaletizationView() {
         onClose={() => setPalletProductMismatchOpen(false)}
         expectedProduct={palletProductMismatchInfo.expectedProduct}
         scannedProduct={palletProductMismatchInfo.scannedProduct}
+      />
+
+      <InvalidOrderModal
+        open={orderInvalid}
+        orderNumber={orderSelected.aufnr}
+        material={orderSelected.matnr?.slice(-9)}
+        onDiscard={handleDiscardInvalidOrder}
       />
 
       <ModalBlank

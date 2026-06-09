@@ -48,10 +48,12 @@ import {
 import {
   notifyCondenserScanned,
   notifyProductScanned,
+  notifyError,
 } from "../partials/paletization/Toasts";
 import ModalBlank from "../components/ModalBlank";
 import ModalAction from "../components/ModalAction";
 import CompressorMismatchModal from "../components/CompressorMismatchModal";
+import InvalidOrderModal from "../components/InvalidOrderModal";
 import {
   joinComponents,
   selectChartDataOrderProgress,
@@ -112,6 +114,38 @@ function GenealogyDashboard() {
   }, []);
 
   const dispatch = useDispatch();
+
+  // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C").
+  // Sin ese material no hay contra qué validar los escaneos, así que se bloquea
+  // todo el flujo hasta descartar la orden.
+  const orderInvalid =
+    Object.keys(orderSelected).length > 0 &&
+    !(orderSelected.components ?? []).some((c) => c?.tipo === "C" && c?.matnr);
+
+  useEffect(() => {
+    if (!orderInvalid) return;
+    dispatch(
+      addEventToGenealogyLog({
+        text:
+          "Orden " +
+          orderSelected.aufnr +
+          ' BLOQUEADA: incompleta, no contiene componente de compresor (tipo "C").',
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }, [orderInvalid, orderSelected.aufnr]);
+
+  function handleDiscardInvalidOrder() {
+    dispatch(
+      addEventToGenealogyLog({
+        text: "Orden incompleta descartada: " + orderSelected.aufnr,
+        timestamp: new Date().toISOString(),
+      })
+    );
+    dispatch(setOrderSelected({}));
+    dispatch(setMetadataOrderSelected([]));
+    handleNew();
+  }
 
   const [currentStepIndexUnion, setCurrentStepIndexUnion] = useState(1)
 
@@ -197,6 +231,19 @@ function GenealogyDashboard() {
     console.log(activeMode, code);
     if (code === "NEW") {
       handleNew();
+      return;
+    }
+    // Orden incompleta: no se permite escanear nada hasta descartarla
+    if (orderInvalid) {
+      notifyError(
+        "Orden incompleta: no contiene el componente de compresor. Descártala y selecciona otra orden."
+      );
+      dispatch(
+        addEventToGenealogyLog({
+          text: "Escaneo ignorado por orden incompleta: " + code,
+          timestamp: new Date().toISOString(),
+        })
+      );
       return;
     }
     if (activeMode === "compressor") {
@@ -431,7 +478,7 @@ function GenealogyDashboard() {
 
       const childNode = {
         id: 2,
-        label: obj.components[0]?.matnr ?? "",
+        label: obj.components?.[0]?.matnr ?? "",
       };
 
       parentNode.children.push(childNode);
@@ -449,7 +496,7 @@ function GenealogyDashboard() {
       condenser_material_code: orderSelected.matnr.slice(-9),
       condenser_status_test: globalStatus === 1 ? true : false,
       compressor_unit_serial: barcodeProduct,
-      compressor_material_code: orderSelected.components[0]?.matnr,
+      compressor_material_code: orderSelected.components?.[0]?.matnr,
     };
 
     console.log(payload);
@@ -1647,6 +1694,13 @@ function GenealogyDashboard() {
         scannedSerial={mismatchInfo.scannedSerial}
         expectedPrefix={mismatchInfo.expectedPrefix}
         scannedPrefix={mismatchInfo.scannedPrefix}
+      />
+
+      <InvalidOrderModal
+        open={orderInvalid}
+        orderNumber={orderSelected.aufnr}
+        material={orderSelected.matnr?.slice(-9)}
+        onDiscard={handleDiscardInvalidOrder}
       />
     </>
   );

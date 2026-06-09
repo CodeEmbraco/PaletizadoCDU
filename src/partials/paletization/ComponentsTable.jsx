@@ -6,7 +6,7 @@ import {
   selectOpenOrdersList,
 } from "../../store/slice/ordersSlice";
 
-import { selectComponents, selectPallet } from "../../store/slice/palletsSlice";
+import { selectComponents, selectPallet, selectPalletNotified } from "../../store/slice/palletsSlice";
 
 import ComponentsItem from "./ComponentsTableItem";
 
@@ -57,6 +57,13 @@ function ComponentsTable({ selectedItems }) {
   const palletSelected = useSelector(selectPallet);
 
   const componentsList = useSelector(selectComponents);
+
+  const palletNotified = useSelector(selectPalletNotified);
+
+  // Pallet ya notificado a SAP: queda congelado, no se permite desmontar
+  const isPalletProcessed =
+    !!palletSelected?.identifier &&
+    palletNotified?.ICharg === palletSelected?.identifier;
 
   useEffect(() => {
     setList(componentsList);
@@ -160,6 +167,7 @@ function ComponentsTable({ selectedItems }) {
                         sendToSAP={component.send_to_sap}
                         sapStatus={component.sap_status}
                         materialType={component.material_type}
+                        locked={isPalletProcessed}
 
                         
                       />

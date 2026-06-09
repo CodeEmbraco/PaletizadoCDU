@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { API_BASE } from "../../utils/apiBase";
 
 import { useDispatch, useSelector } from "react-redux";
@@ -25,6 +25,8 @@ function LogsItem(props) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const palletSelected = useSelector(selectPallet);
   const [isLoading, setIsLoading] = useState(false);
+  const inFlight = useRef(false);
+  const [processedOk, setProcessedOk] = useState(false);
   const [devInterface, setDevInterface] = useState("F");
   const [devFase, setDevFase] = useState("");
   const [devComplemento, setDevComplemento] = useState(" ");
@@ -42,18 +44,22 @@ function LogsItem(props) {
   };
 
   const handleReprocess = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setIsLoading(true);
     try {
       const interfaceVal = props.devMode ? devInterface : "F";
       const faseVal = props.devMode ? devFase : undefined;
       const complementoVal = props.devMode ? devComplemento : undefined;
-      await dispatch(reprocessPallet(props.identifier, props.mounted_components_count, interfaceVal, faseVal, complementoVal));
+      const ok = await dispatch(reprocessPallet(props.identifier, props.mounted_components_count, interfaceVal, faseVal, complementoVal));
+      if (ok) setProcessedOk(true);
       await props.fetchPallets("&workstation=MXCDU01");
     } catch (error) {
       console.log("Error al reprocesar el lote: " + error);
     } finally {
       setIsLoading(false);
       setDangerModalOpen(false);
+      inFlight.current = false;
     }
   };
 
@@ -151,7 +157,7 @@ function LogsItem(props) {
         )}
         <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap w-px">
           {/* Menu button */}
-          {props.sapSuccess && !props.devMode ? (
+          {(props.sapSuccess || processedOk) && !props.devMode ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();

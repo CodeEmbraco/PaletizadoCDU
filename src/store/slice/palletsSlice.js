@@ -1,6 +1,7 @@
 import { createAction, createSlice } from '@reduxjs/toolkit';
 import axios from 'axios';
 import { endpointsCodes } from './endpointCodes';
+import { addEventToPaletizationLog } from './eventsLogSlice';
 import { notifyError, notifyErrorInSAP, notifyGenealogyNotFound, notifyProductAlreadyMounted, notifyProductMounted, notifyProductUnmounted, notifyProductsJoined, notifySuccesInSAP } from '../../partials/paletization/Toasts';
 import { tailwindConfig } from '../../utils/Utils';
 import { API_BASE } from '../../utils/apiBase';
@@ -369,21 +370,21 @@ export const createPallet = (order, barcode, product, quantity, onError) => (dis
     try {
       const response = await axios.post(`${API_BASE()}/api/v1/paletization/reprocess/`, data);
       dispatch(setLoadingProcessInSap(false));
-      if (response.status === 200) {
-        if (response.data.EMessage === "Process Notification executed successfully") {
-          notifySuccesInSAP(palletIdentifier, response.data.EMessage);
-          dispatch(addEventToPaletizationLog({
-            text: "Pallet notificado: " + palletIdentifier,
-            timestamp: new Date().toISOString(),
-          }));
-          dispatch(setPalletNotified({ ICharg: palletIdentifier }));
-        } else {
-          notifyErrorInSAP(palletIdentifier, response.data.EMessage);
-        }
+      if (response.status === 200 && response.data.EMessage === "Process Notification executed successfully") {
+        notifySuccesInSAP(palletIdentifier, response.data.EMessage);
+        dispatch(addEventToPaletizationLog({
+          text: "Pallet notificado: " + palletIdentifier,
+          timestamp: new Date().toISOString(),
+        }));
+        dispatch(setPalletNotified({ ICharg: palletIdentifier }));
+        return true;
       }
+      notifyErrorInSAP(palletIdentifier, response.data.EMessage);
+      return false;
     } catch (error) {
       notifyErrorInSAP(palletIdentifier, error.message);
       endpointsCodes(error, dispatch, setNotFound);
+      return false;
     }
   };
 
