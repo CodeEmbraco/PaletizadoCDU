@@ -67,6 +67,7 @@ import {
 import ModalBlank from "../components/ModalBlank";
 import CompressorMismatchModal from "../components/CompressorMismatchModal";
 import PalletProductMismatchModal from "../components/PalletProductMismatchModal";
+import CondenserMismatchModal from "../components/CondenserMismatchModal";
 import InvalidOrderModal from "../components/InvalidOrderModal";
 
 
@@ -112,6 +113,13 @@ function PaletizationView() {
   const [palletProductMismatchInfo, setPalletProductMismatchInfo] = useState({
     expectedProduct: "",
     scannedProduct: "",
+  });
+
+  const [condenserMismatchOpen, setCondenserMismatchOpen] = useState(false);
+  const [condenserMismatchInfo, setCondenserMismatchInfo] = useState({
+    expectedProduct: "",
+    scannedProduct: "",
+    scannedSerial: "",
   });
 
   // El pallet ya fue notificado a SAP: el trabajo terminó y queda congelado
@@ -285,6 +293,40 @@ function PaletizationView() {
         );
         return;
       }
+
+      // Validar que el componente escaneado sea del producto de la orden.
+      // En el serial del condensador el material va en los PRIMEROS 9
+      // caracteres (igual que qrValue.slice(0, 9) en la genealogía/etiqueta).
+      // El producto de la orden son los ÚLTIMOS 9 del matnr (el matnr trae
+      // ceros de relleno al inicio). Si no coinciden, se rechaza el montaje.
+      const scannedProductCode = code.slice(0, 9).toUpperCase();
+      if (
+        scannedProductCode &&
+        expectedProductCode &&
+        scannedProductCode !== expectedProductCode
+      ) {
+        setCondenserMismatchInfo({
+          expectedProduct: expectedProductCode,
+          scannedProduct: scannedProductCode,
+          scannedSerial: code,
+        });
+        setCondenserMismatchOpen(true);
+        dispatch(
+          addEventToPaletizationLog({
+            text:
+              "Componente RECHAZADO por producto no coincide. Esperado: " +
+              expectedProductCode +
+              " | Escaneado: " +
+              scannedProductCode +
+              " (" +
+              code +
+              ")",
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
+
       const codeScannedEvent = {
         text: "Producto escaneado: " + code,
         timestamp: new Date().toISOString(),
@@ -489,6 +531,8 @@ function PaletizationView() {
     setPalletProductValidated(false);
     setPalletProductMismatchOpen(false);
     setPalletProductMismatchInfo({ expectedProduct: "", scannedProduct: "" });
+    setCondenserMismatchOpen(false);
+    setCondenserMismatchInfo({ expectedProduct: "", scannedProduct: "", scannedSerial: "" });
     setMismatchOpen(false);
     const handleNewEvent = {
       text:
@@ -1180,6 +1224,14 @@ function PaletizationView() {
         onClose={() => setPalletProductMismatchOpen(false)}
         expectedProduct={palletProductMismatchInfo.expectedProduct}
         scannedProduct={palletProductMismatchInfo.scannedProduct}
+      />
+
+      <CondenserMismatchModal
+        open={condenserMismatchOpen}
+        onClose={() => setCondenserMismatchOpen(false)}
+        expectedProduct={condenserMismatchInfo.expectedProduct}
+        scannedProduct={condenserMismatchInfo.scannedProduct}
+        scannedSerial={condenserMismatchInfo.scannedSerial}
       />
 
       <InvalidOrderModal
