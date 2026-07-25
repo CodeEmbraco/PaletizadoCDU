@@ -19,6 +19,13 @@ import {
 
 const DEV_PASSWORD = "dev1234";
 
+// Longitud mínima de un código escaneado válido. Los teclazos al azar
+// (números cortos) se descartan en lugar de crear un pallet basura.
+const MIN_SCAN_LENGTH = 7;
+
+// Contraseña de administrador requerida para editar la cantidad del pallet.
+const PALLET_QTY_PASSWORD = "Nidec2026";
+
 import Stepper from "@keyvaluesystems/react-vertical-stepper";
 
 import GraphicHistory from "../partials/paletization/GraphicHistory";
@@ -191,6 +198,27 @@ function PaletizationView() {
     console.log(code);
     if (code === "NEW") {
       handleNew();
+      return;
+    }
+
+    // Rechazar códigos demasiado cortos: no son pallet ni producto ni componente.
+    // Evita que teclear números al azar se registre como un pallet.
+    if (code.length < MIN_SCAN_LENGTH) {
+      notifyError(
+        "No es un pallet: el código debe tener al menos " +
+          MIN_SCAN_LENGTH +
+          " caracteres. Escanea de nuevo."
+      );
+      dispatch(
+        addEventToPaletizationLog({
+          text:
+            "Escaneo RECHAZADO por código demasiado corto (" +
+            code.length +
+            " caracteres): " +
+            code,
+          timestamp: new Date().toISOString(),
+        })
+      );
       return;
     }
 
@@ -593,6 +621,11 @@ function PaletizationView() {
   const [editingPalletQty, setEditingPalletQty] = useState(false);
   const [palletQtyInput, setPalletQtyInput] = useState("");
 
+  // Bloqueo por contraseña previo a editar la cantidad del pallet
+  const [qtyPasswordModalOpen, setQtyPasswordModalOpen] = useState(false);
+  const [qtyPasswordInput, setQtyPasswordInput] = useState("");
+  const [qtyPasswordError, setQtyPasswordError] = useState(false);
+
   // Dev mode
   const [devModeActive, setDevModeActive] = useState(
     () => localStorage.getItem("devMode") === "true"
@@ -654,9 +687,30 @@ function PaletizationView() {
   function handlePalletQtyClick() {
     // No permitir editar la cantidad si el pallet ya fue procesado
     if (isPalletProcessed) return;
-    const current = metadata?.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT ?? "";
+    // Candado: se pide contraseña de administrador antes de habilitar la edición
+    setQtyPasswordInput("");
+    setQtyPasswordError(false);
+    setQtyPasswordModalOpen(true);
+  }
+
+  function handleValidateQtyPassword() {
+    if (qtyPasswordInput !== PALLET_QTY_PASSWORD) {
+      setQtyPasswordError(true);
+      return;
+    }
+    const current =
+      metadata?.find((obj) => obj.ID_CARACTMATERIAL === 185)?.DE_VALORCARACTMAT ?? "";
+    setQtyPasswordError(false);
+    setQtyPasswordInput("");
+    setQtyPasswordModalOpen(false);
     setPalletQtyInput(current);
     setEditingPalletQty(true);
+    dispatch(
+      addEventToPaletizationLog({
+        text: "Edición de cantidad de pallet desbloqueada con contraseña.",
+        timestamp: new Date().toISOString(),
+      })
+    );
   }
 
   function handlePalletQtyConfirm() {
@@ -667,6 +721,12 @@ function PaletizationView() {
           : obj
       );
       dispatch(setMetadataOrderSelected(updated));
+      dispatch(
+        addEventToPaletizationLog({
+          text: "Cantidad de pallet modificada a: " + palletQtyInput,
+          timestamp: new Date().toISOString(),
+        })
+      );
     }
     setEditingPalletQty(false);
   }
@@ -873,7 +933,7 @@ function PaletizationView() {
                           title={
                             isPalletProcessed
                               ? "Pallet procesado, cantidad bloqueada"
-                              : "Click para editar"
+                              : "Click para editar (requiere contraseña)"
                           }
                         >
                           {Array.isArray(metadata) && metadata.length > 0
@@ -1075,6 +1135,56 @@ function PaletizationView() {
           </div>
         </div>
       </div>
+
+      {/* Modal de contraseña para editar la cantidad del pallet */}
+      {qtyPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-96">
+            <h3 className="text-lg font-semibold text-slate-800 mb-1">
+              Contraseña requerida
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Ingresa la contraseña de administrador para modificar la cantidad
+              del pallet.
+            </p>
+            <input
+              type="password"
+              autoFocus
+              className="w-full border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-primary"
+              placeholder="Contraseña"
+              value={qtyPasswordInput}
+              onChange={(e) => {
+                setQtyPasswordInput(e.target.value);
+                if (qtyPasswordError) setQtyPasswordError(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleValidateQtyPassword();
+                }
+                if (e.key === "Escape") setQtyPasswordModalOpen(false);
+              }}
+            />
+            {qtyPasswordError && (
+              <p className="text-sm text-red-500 mt-2">Contraseña incorrecta.</p>
+            )}
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                className="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+                onClick={() => setQtyPasswordModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-green-500"
+                onClick={handleValidateQtyPassword}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dev mode password modal */}
       {devPasswordModalOpen && (
