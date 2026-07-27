@@ -24,7 +24,7 @@ const DEV_PASSWORD = "dev1234";
 const MIN_SCAN_LENGTH = 7;
 
 // Contraseña de administrador requerida para editar la cantidad del pallet.
-const PALLET_QTY_PASSWORD = "Nidec2026";
+const PALLET_QTY_PASSWORD = "embraco123";
 
 import Stepper from "@keyvaluesystems/react-vertical-stepper";
 
