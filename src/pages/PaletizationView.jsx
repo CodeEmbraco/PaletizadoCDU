@@ -135,12 +135,15 @@ function PaletizationView() {
     !!palletSelected?.identifier &&
     palletNotified?.ICharg === palletSelected?.identifier;
 
-  // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C").
-  // Sin ese material no hay contra qué validar los escaneos, así que se bloquea
-  // todo el flujo hasta descartar la orden.
+  // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C")
+  // con el formato comodín esperado (ej. "513805006...U"). Sin ese material no
+  // hay contra qué validar los escaneos, así que se bloquea todo el flujo
+  // hasta descartar la orden.
   const orderInvalid =
     Object.keys(orderSelected).length > 0 &&
-    !(orderSelected.components ?? []).some((c) => c?.tipo === "C" && c?.matnr);
+    !(orderSelected.components ?? []).some(
+      (c) => c?.tipo === "C" && c?.matnr && /[.…]/.test(c.matnr)
+    );
 
   useEffect(() => {
     if (!orderInvalid) return;
@@ -373,7 +376,12 @@ function PaletizationView() {
 
       const response = await dispatch(getCompressor(code));
       const condenserMaterial = orderSelected.matnr?.slice(-9) ?? "";
-      const compressorComponent = orderSelected.components?.find((c) => c.tipo === "C");
+      // Si hay más de un componente tipo "C", el correcto es el que trae el
+      // patrón comodín en el matnr (ej. "513805006...U"). orderInvalid ya
+      // garantiza que exista al menos uno con ese formato.
+      const compressorComponent = orderSelected.components?.find(
+        (c) => c.tipo === "C" && /[.…]/.test(c.matnr ?? "")
+      );
       const compressorMaterial =
         compressorComponent?.matnr || response?.compressor_material_code || "";
 

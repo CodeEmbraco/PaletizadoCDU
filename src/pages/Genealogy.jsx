@@ -115,12 +115,15 @@ function GenealogyDashboard() {
 
   const dispatch = useDispatch();
 
-  // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C").
-  // Sin ese material no hay contra qué validar los escaneos, así que se bloquea
-  // todo el flujo hasta descartar la orden.
+  // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C")
+  // con el formato comodín esperado (ej. "513805006...U"). Sin ese material no
+  // hay contra qué validar los escaneos, así que se bloquea todo el flujo
+  // hasta descartar la orden.
   const orderInvalid =
     Object.keys(orderSelected).length > 0 &&
-    !(orderSelected.components ?? []).some((c) => c?.tipo === "C" && c?.matnr);
+    !(orderSelected.components ?? []).some(
+      (c) => c?.tipo === "C" && c?.matnr && /[.…]/.test(c.matnr)
+    );
 
   useEffect(() => {
     if (!orderInvalid) return;
