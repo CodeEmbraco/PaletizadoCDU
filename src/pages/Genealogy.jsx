@@ -250,7 +250,10 @@ function GenealogyDashboard() {
       return;
     }
     if (activeMode === "compressor") {
-      const orderCompressorMaterial = orderSelected.components?.[0]?.matnr ?? "";
+      const orderCompressorMaterial =
+        orderSelected.components?.find(
+          (c) => c?.tipo === "C" && /[.…]/.test(c?.matnr ?? "")
+        )?.matnr ?? "";
       const cleaned = String(orderCompressorMaterial).replace(/^0+/, "");
       const dotIdx = cleaned.search(/[.…]/);
       const expectedPrefix =
@@ -479,9 +482,15 @@ function GenealogyDashboard() {
         children: [],
       };
 
+      // Si hay más de un componente, el compresor correcto es el que trae el
+      // patrón comodín en el matnr (ej. "513805006...U").
+      const compressorComponent = obj.components?.find(
+        (c) => c?.tipo === "C" && /[.…]/.test(c?.matnr ?? "")
+      );
+
       const childNode = {
         id: 2,
-        label: obj.components?.[0]?.matnr ?? "",
+        label: compressorComponent?.matnr ?? "",
       };
 
       parentNode.children.push(childNode);
@@ -499,7 +508,9 @@ function GenealogyDashboard() {
       condenser_material_code: orderSelected.matnr.slice(-9),
       condenser_status_test: globalStatus === 1 ? true : false,
       compressor_unit_serial: barcodeProduct,
-      compressor_material_code: orderSelected.components?.[0]?.matnr,
+      compressor_material_code: orderSelected.components?.find(
+        (c) => c?.tipo === "C" && /[.…]/.test(c?.matnr ?? "")
+      )?.matnr,
     };
 
     console.log(payload);
