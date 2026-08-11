@@ -19,7 +19,7 @@ import ModalBlank from "../../components/ModalBlank";
 import { Check, Clock, InfoCircle, Verify, Warning2 } from "iconsax-react";
 
 // Contraseña de administrador requerida para poder reprocesar un lote desde Logs.
-const REPROCESS_PASSWORD = "Nidec2026";
+const REPROCESS_PASSWORD = "NidecNGA-TI26";
 
 function LogsItem(props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
