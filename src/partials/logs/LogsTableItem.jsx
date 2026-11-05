@@ -17,9 +17,8 @@ import {
 } from "../../store/slice/palletsSlice";
 import ModalBlank from "../../components/ModalBlank";
 import { Check, Clock, InfoCircle, Verify, Warning2 } from "iconsax-react";
-
 // Contraseña de administrador requerida para poder reprocesar un lote desde Logs.
-const REPROCESS_PASSWORD = "NidecNGA-TI26";
+import { REPROCESS_PASSWORD } from "../../utils/passwords";
 
 function LogsItem(props) {
   const [detailsOpen, setDetailsOpen] = useState(false);

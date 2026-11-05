@@ -43,6 +43,16 @@ function ComponentsItem(props) {
       <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
         <div className="text-left text-md font-medium text-gray">{props.compUnitSerial}</div>
       </td>
+      {props.showInverter && (
+        <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
+          <div className="text-left text-md font-medium text-gray">{props.inverterSerial || "—"}</div>
+        </td>
+      )}
+      {props.showFan && (
+        <td className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
+          <div className="text-left text-md font-medium text-gray">{props.fanSerial || "—"}</div>
+        </td>
+      )}
     </tr>
      {/* Danger Modal */}
      <div className="m-1.5">

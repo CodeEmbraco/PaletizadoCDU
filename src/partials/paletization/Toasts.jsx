@@ -25,6 +25,13 @@ export const notifySuccesInSAP = (lote, mensaje) => toast.success(`Lote ${lote} 
 
 export const notifyErrorInSAP = (lote, error) => toast.error(`Error al procesar el lote ${lote} en SAP: ${error}`, { style: {}, duration: 9000 });
 
+// Genealogía extendida (inversor / fan) y configuración por SKU
+export const notifyPartScanned = (label, code) => toast.success(`${label} escaneado: ${code}`, { style: {} });
+
+export const notifyConfigSaved = (sku) => toast.success(`Configuración del SKU ${sku} guardada`);
+
+export const notifyConfigDeleted = (sku) => toast.success(`Configuración del SKU ${sku} eliminada`, { icon: 'ℹ️' });
+
 
 // Toast de error
 export const notifyError = (message) => toast.error(message);

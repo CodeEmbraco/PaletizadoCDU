@@ -17,14 +17,13 @@ import {
   Code,
 } from "iconsax-react";
 
-const DEV_PASSWORD = "dev1234";
+// DEV_PASSWORD: modo desarrollador. PALLET_QTY_PASSWORD: contraseña de
+// administrador requerida para editar la cantidad del pallet.
+import { DEV_PASSWORD, PALLET_QTY_PASSWORD } from "../utils/passwords";
 
 // Longitud mínima de un código escaneado válido. Los teclazos al azar
 // (números cortos) se descartan en lugar de crear un pallet basura.
 const MIN_SCAN_LENGTH = 7;
-
-// Contraseña de administrador requerida para editar la cantidad del pallet.
-const PALLET_QTY_PASSWORD = "embraco123";
 
 import Stepper from "@keyvaluesystems/react-vertical-stepper";
 

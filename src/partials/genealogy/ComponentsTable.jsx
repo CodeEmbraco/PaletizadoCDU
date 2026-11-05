@@ -62,6 +62,14 @@ function ComponentsTable() {
     setList(componentsList);
   }, []);
 
+  // Partes adicionales (inversor / fan) de la genealogía extendida. Las
+  // columnas solo se muestran si alguna unidad de la orden las trae.
+  const getPartSerial = (component, type) =>
+    (component?.parts ?? []).find((p) => p.part_type === type)?.serial ?? "";
+  const safeList = Array.isArray(componentsList) ? componentsList : [];
+  const showInverter = safeList.some((c) => getPartSerial(c, "inverter"));
+  const showFan = safeList.some((c) => getPartSerial(c, "fan"));
+
 
   // useEffect(() => {
   //   console.log("first render")
@@ -127,6 +135,16 @@ function ComponentsTable() {
                     Serial (Compresor)
                   </div>
                 </th>
+                {showInverter && (
+                  <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
+                    <div className="font-semibold text-left">Serial (Inversor)</div>
+                  </th>
+                )}
+                {showFan && (
+                  <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
+                    <div className="font-semibold text-left">Serial (Fan)</div>
+                  </th>
+                )}
                 {/* <th className="px-2 first:pl-5 last:pr-5 py-3 whitespace-nowrap">
                   <div className="font-semibold text-center">Acciones</div>
                 </th> */}
@@ -145,7 +163,11 @@ function ComponentsTable() {
                         compMaterialCode={component.compressor_material_code}
                         compUnitSerial={component.compressor_unit_serial}
                         condMaterialCode={component.condenser_material_code}
-                        condUnitSerial={component.condenser_unit_serial}  
+                        condUnitSerial={component.condenser_unit_serial}
+                        showInverter={showInverter}
+                        inverterSerial={getPartSerial(component, "inverter")}
+                        showFan={showFan}
+                        fanSerial={getPartSerial(component, "fan")}
                       />
                     );
                   })

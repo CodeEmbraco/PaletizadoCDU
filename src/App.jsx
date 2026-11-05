@@ -17,6 +17,8 @@ import PrivateRoute from "./routes/PrivateRoute";
 import PublicRoute from "./routes/PublicRoute";
 import toast, { Toaster, ToastBar } from "react-hot-toast";
 import LogsPage from "./pages/LogsPage";
+import ConfigPage from "./pages/ConfigPage";
+import GenealogyReportPage from "./pages/GenealogyReportPage";
 
 function App() {
   const location = useLocation();
@@ -75,6 +77,22 @@ function App() {
           element={
             <PublicRoute>
               <LogsPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/configuracion"
+          element={
+            <PublicRoute>
+              <ConfigPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/genealogia/reporte"
+          element={
+            <PublicRoute>
+              <GenealogyReportPage />
             </PublicRoute>
           }
         />

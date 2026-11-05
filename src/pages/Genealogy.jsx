@@ -20,7 +20,7 @@ import {
   Scan,
 } from "iconsax-react";
 
-const DEV_PASSWORD = "dev1234";
+import { DEV_PASSWORD } from "../utils/passwords";
 
 import Stepper from "@keyvaluesystems/react-vertical-stepper";
 
@@ -48,12 +48,26 @@ import {
 import {
   notifyCondenserScanned,
   notifyProductScanned,
+  notifyPartScanned,
   notifyError,
 } from "../partials/paletization/Toasts";
 import ModalBlank from "../components/ModalBlank";
 import ModalAction from "../components/ModalAction";
-import CompressorMismatchModal from "../components/CompressorMismatchModal";
+import PartMismatchModal from "../components/PartMismatchModal";
 import InvalidOrderModal from "../components/InvalidOrderModal";
+import {
+  PART_DEFS,
+  requiredParts,
+  resolvePart,
+  validatePart,
+  normalizeMaterial,
+  isConfigActive,
+} from "../utils/genealogyParts";
+import {
+  fetchGenealogyConfig,
+  selectGenealogyConfigBySku,
+  selectGenealogyConfigLoading,
+} from "../store/slice/genealogyConfigSlice";
 import {
   joinComponents,
   selectChartDataOrderProgress,
@@ -80,19 +94,22 @@ function GenealogyDashboard() {
 
   const [hasChildrenAssociated, setHasChildrenAssociated] = useState(false);
 
+  // Paso activo del escaneo: cualquier key de PART_DEFS
+  // (compressor | inverter | fan | condenser).
   const [mode, setMode] = useState("compressor");
 
-  const [barcodeProduct, setBarcodeProduct] = useState("Escanea compresor");
-  const [barcodeCondenser, setBarcodeCondenser] = useState(
-    "Escanea condensador"
-  );
+  // Códigos escaneados por parte ({ compressor, inverter, fan, condenser }).
+  // Una parte ausente = no escaneada; nunca se guardan textos de placeholder.
+  const [scannedParts, setScannedParts] = useState({});
 
   const [mismatchOpen, setMismatchOpen] = useState(false);
   const [mismatchInfo, setMismatchInfo] = useState({
+    part: "compressor",
     expectedMaterial: "",
     scannedSerial: "",
     expectedPrefix: "",
     scannedPrefix: "",
+    hint: "",
   });
 
   const [treeData, setTreeData] = useState([]);
@@ -114,6 +131,73 @@ function GenealogyDashboard() {
   }, []);
 
   const dispatch = useDispatch();
+
+  // Genealogía extendida: configuración del SKU (material del condensador)
+  // que dice si además del compresor hay que escanear inversor y/o fan.
+  // partsConfig: undefined = no consultado aún, null = sin configuración.
+  const configBySku = useSelector(selectGenealogyConfigBySku);
+  const configLoading = useSelector(selectGenealogyConfigLoading);
+  const sku = orderSelected?.matnr?.slice(-9) ?? "";
+  const partsConfig = sku ? configBySku[sku] : undefined;
+  // Partes a escanear, en orden: compresor → [inversor] → [fan] → condensador.
+  const requiredPartsList = requiredParts(partsConfig);
+
+  // Alias derivados: siguen alimentando las tarjetas, la etiqueta ZPL y el
+  // modal de unión sin tocar esos bloques.
+  const barcodeProduct =
+    scannedParts.compressor ?? PART_DEFS.compressor.placeholder;
+  const barcodeCondenser =
+    scannedParts.condenser ?? PART_DEFS.condenser.placeholder;
+
+  const nextMissingPart = (parts) =>
+    requiredPartsList.find((k) => !parts[k]) ?? "condenser";
+
+  // Paso resaltado en el Stepper del modal de unión (derivado del modo).
+  const currentStepIndexUnion = Math.max(0, requiredPartsList.indexOf(mode));
+
+  const allPartsScanned = requiredPartsList.every((k) => !!scannedParts[k]);
+  const missingParts = requiredPartsList.filter((k) => !scannedParts[k]);
+  const scannedSerials = requiredPartsList
+    .map((k) => scannedParts[k])
+    .filter(Boolean);
+  const hasDuplicateSerial =
+    new Set(scannedSerials).size !== scannedSerials.length;
+  const canConfirm =
+    allPartsScanned && globalStatus === 1 && !hasDuplicateSerial;
+
+  useEffect(() => {
+    if (sku) dispatch(fetchGenealogyConfig(sku));
+  }, [sku]);
+
+  useEffect(() => {
+    if (!sku || partsConfig === undefined) return;
+    const text = isConfigActive(partsConfig)
+      ? "Configuración de genealogía para SKU " +
+        sku +
+        ": requiere inversor " +
+        (partsConfig.requires_inverter
+          ? "(" + normalizeMaterial(partsConfig.inverter_material) + ")"
+          : "no") +
+        " | fan " +
+        (partsConfig.requires_fan
+          ? "(" + normalizeMaterial(partsConfig.fan_material) + ")"
+          : "no")
+      : "SKU " +
+        sku +
+        " sin configuración adicional: flujo estándar (compresor + condensador).";
+    dispatch(
+      addEventToGenealogyLog({ text, timestamp: new Date().toISOString() })
+    );
+  }, [sku, partsConfig]);
+
+  // Si cambia la orden y el paso activo ya no aplica (p. ej. de un SKU con
+  // inversor a uno sin), regresar a la primera parte faltante.
+  const requiredPartsKey = requiredPartsList.join(",");
+  useEffect(() => {
+    if (!requiredPartsList.includes(mode)) {
+      setMode(nextMissingPart(scannedParts));
+    }
+  }, [requiredPartsKey]);
 
   // Orden incompleta en SAP: no trae ningún componente de compresor (tipo "C")
   // con el formato comodín esperado (ej. "513805006...U"). Sin ese material no
@@ -149,8 +233,6 @@ function GenealogyDashboard() {
     dispatch(setMetadataOrderSelected([]));
     handleNew();
   }
-
-  const [currentStepIndexUnion, setCurrentStepIndexUnion] = useState(1)
 
   const [chartData, setChartData] = useState(
     {
@@ -215,18 +297,12 @@ function GenealogyDashboard() {
 
 
 
-  const stepsUnion = [
-    {
-      label: "Compresor",
-      description: barcodeProduct,
-      status: "visited",
-    },
-    {
-      label: "Condensador",
-      description: barcodeCondenser,
-      status: "visited",
-    },
-  ];
+  // Pasos del modal de unión: uno por parte requerida para el SKU.
+  const stepsUnion = requiredPartsList.map((k) => ({
+    label: PART_DEFS[k].label,
+    description: scannedParts[k] ?? PART_DEFS[k].placeholder,
+    status: "visited",
+  }));
 
   const handleScan = (rawCode, modeOverride) => {
     const code = rawCode.replace(/Shift/g, "").toUpperCase();
@@ -249,7 +325,26 @@ function GenealogyDashboard() {
       );
       return;
     }
-    if (activeMode === "compressor") {
+    // La configuración del SKU todavía se está consultando: no se sabe qué
+    // partes pedir, así que no se acepta el escaneo.
+    if (sku && partsConfig === undefined && configLoading) {
+      notifyError(
+        "Cargando la configuración de genealogía del SKU, intenta de nuevo en un momento."
+      );
+      return;
+    }
+
+    // Inversor y fan se detectan por el material del escaneo; compresor y
+    // condensador siguen dependiendo del paso activo (flujo clásico).
+    const part = resolvePart(code, activeMode, partsConfig);
+    if (!requiredPartsList.includes(part)) {
+      notifyError(
+        (PART_DEFS[part]?.label ?? part) + " no aplica para este SKU."
+      );
+      return;
+    }
+
+    if (part === "compressor") {
       const orderCompressorMaterial =
         orderSelected.components?.find(
           (c) => c?.tipo === "C" && /[.…]/.test(c?.matnr ?? "")
@@ -261,10 +356,12 @@ function GenealogyDashboard() {
       const scannedPrefix = code.slice(0, expectedPrefix.length);
       if (expectedPrefix && scannedPrefix && expectedPrefix !== scannedPrefix) {
         setMismatchInfo({
+          part: "compressor",
           expectedMaterial: cleaned,
           scannedSerial: code,
           expectedPrefix,
           scannedPrefix,
+          hint: "",
         });
         setMismatchOpen(true);
         dispatch(
@@ -282,31 +379,69 @@ function GenealogyDashboard() {
         );
         return;
       }
-      const codeScannedEvent = {
-        text: "Compresor escaneado: " + code,
-        timestamp: new Date().toISOString(),
-      };
       notifyProductScanned(code);
-      setBarcodeProduct(code);
       setInfoModalOpen(true);
-      dispatch(addEventToGenealogyLog(codeScannedEvent));
-      setMode("condenser");
-    } else if (activeMode === "condenser") {
-      const codeScannedEvent = {
-        text: "Condensador escaneado: " + code,
-        timestamp: new Date().toISOString(),
-      };
-      setBarcodeCondenser(code);
+      acceptScan("compressor", code, "Compresor escaneado: " + code);
+      return;
+    }
+
+    if (part === "condenser") {
       notifyCondenserScanned(code);
       dispatch(getTestResults(code));
-      dispatch(addEventToGenealogyLog(codeScannedEvent));
+      acceptScan("condenser", code, "Condensador escaneado: " + code);
       const getCondenserTestResultsEvent = {
         text: "Consultando resultados de prueba de condensador: " + code,
         timestamp: new Date().toISOString(),
       };
       dispatch(addEventToGenealogyLog(getCondenserTestResultsEvent));
+      return;
     }
+
+    // Partes adicionales (inversor / fan): formato de la etiqueta + material
+    // esperado por la configuración del SKU.
+    const label = PART_DEFS[part].label;
+    const result = validatePart(part, code, partsConfig);
+    if (!result.ok) {
+      setMismatchInfo({
+        part,
+        expectedMaterial: result.expected,
+        scannedSerial: code,
+        expectedPrefix: result.expected,
+        scannedPrefix: result.scanned,
+        hint: result.hint,
+      });
+      setMismatchOpen(true);
+      dispatch(
+        addEventToGenealogyLog({
+          text:
+            label +
+            " RECHAZADO (" +
+            result.reason +
+            "). Esperado: " +
+            result.expected +
+            " | Escaneado: " +
+            result.scanned +
+            " (" +
+            code +
+            ")",
+          timestamp: new Date().toISOString(),
+        })
+      );
+      return;
+    }
+    notifyPartScanned(label, code);
+    acceptScan(part, code, label + " escaneado: " + code);
   };
+
+  // Registra un escaneo aceptado y avanza al siguiente paso faltante.
+  function acceptScan(part, code, logText) {
+    const updated = { ...scannedParts, [part]: code };
+    setScannedParts(updated);
+    dispatch(
+      addEventToGenealogyLog({ text: logText, timestamp: new Date().toISOString() })
+    );
+    setMode(nextMissingPart(updated));
+  }
 
   useScanDetection({
     onComplete: (code) => handleScan(code),
@@ -442,21 +577,16 @@ function GenealogyDashboard() {
   
 
   function handleStepClickUnion(step, stepIndex) {
-    if (stepIndex === 0) {
-      console.log("Modo Compresor");
-      setMode("compressor");
-    } else if (stepIndex === 1) {
-      console.log("Modo condensador");
-      setMode("condenser");
-    }
-    setCurrentStepIndexUnion(stepIndex);
+    const part = requiredPartsList[stepIndex] ?? "compressor";
+    console.log("Modo " + PART_DEFS[part].label);
+    setMode(part);
   }
 
   function handleNew() {
     console.log("Handle new step");
     setMode("compressor");
-    setBarcodeProduct("Escanea compresor");
-    setBarcodeCondenser("Escanea condesador");
+    setScannedParts({});
+    setMismatchOpen(false);
     dispatch(setGlobalStatus(""));
     dispatch(setTestResults([]));
     dispatch(setComponentsJoined(false));
@@ -513,6 +643,19 @@ function GenealogyDashboard() {
       )?.matnr,
     };
 
+    // Partes adicionales (inversor / fan) solo cuando el SKU las exige; así el
+    // payload de un SKU sin configuración queda idéntico al de siempre.
+    const extraParts = requiredPartsList
+      .filter((k) => k !== "compressor" && k !== "condenser")
+      .map((k) => ({
+        part_type: k,
+        serial: scannedParts[k],
+        material_code: normalizeMaterial(partsConfig?.[PART_DEFS[k].materialKey]),
+      }));
+    if (extraParts.length > 0) {
+      payload.parts = extraParts;
+    }
+
     console.log(payload);
     dispatch(joinComponents(payload));
     console.log(componentsJoined);
@@ -520,11 +663,7 @@ function GenealogyDashboard() {
   }
 
   function handleOpenModalUnion(e) {
-    setComponentsJoined(false);
     e.stopPropagation();
-    if (barcodeCondenser === "Escanea condensador") {
-      setCurrentStepIndexUnion(0);
-    }
     setInfoModalOpen(true);
   }
 
@@ -543,8 +682,7 @@ function GenealogyDashboard() {
   }
 
   function buildLabelZPL() {
-    const qrValue =
-      barcodeCondenser !== "Escanea condensador" ? barcodeCondenser : "ERR";
+    const qrValue = scannedParts.condenser ?? "ERR";
     const numeroMaterial = qrValue.slice(0, 9);
     const numeroSerie = qrValue.slice(qrValue.length - 8);
     const fecha = formatLabelDate(new Date());
@@ -638,8 +776,8 @@ function GenealogyDashboard() {
   );
   const [devPasswordInput, setDevPasswordInput] = useState("");
   const [devPasswordModalOpen, setDevPasswordModalOpen] = useState(false);
-  const [devCompressorInput, setDevCompressorInput] = useState("");
-  const [devCondenserInput, setDevCondenserInput] = useState("");
+  // Un input de simulación por parte requerida ({ compressor, inverter, ... })
+  const [devInputs, setDevInputs] = useState({});
 
   const activateDevMode = () => { localStorage.setItem("devMode", "true"); setDevModeActive(true); };
   const deactivateDevMode = () => { localStorage.removeItem("devMode"); setDevModeActive(false); };
@@ -811,47 +949,32 @@ function GenealogyDashboard() {
               </div>
             </section>
 
-            <section className="inline-block align-bottom rounded-lg border border-slate-200 text-left overflow-hidden mb-4 w-full sm:w-1/3 sm:my-4">
-              <div className="bg-white p-5">
-                <div className="sm:flex sm:items-start bg-white">
-                  <div className="bg-white text-center sm:mt-0 sm:ml-2 sm:text-left">
-                    <div className="flex items-center">
-                      <Category className="mr-2" color="#A0A2A6" size={20} />
-                      <h3 className="bg-white text-md font-medium text-gray">
-                        Compresor
-                      </h3>
-                    </div>
+            {/* Una tarjeta por parte a escanear (compresor, [inversor], [fan], condensador) */}
+            {requiredPartsList.map((k) => (
+              <section
+                key={k}
+                className="inline-block align-bottom rounded-lg border border-slate-200 text-left overflow-hidden mb-4 w-full sm:w-1/3 sm:my-4"
+              >
+                <div className="bg-white p-5">
+                  <div className="sm:flex sm:items-start bg-white">
+                    <div className="bg-white text-center sm:mt-0 sm:ml-2 sm:text-left">
+                      <div className="flex items-center">
+                        <Category className="mr-2" color="#A0A2A6" size={20} />
+                        <h3 className="bg-white text-md font-medium text-gray">
+                          {PART_DEFS[k].label}
+                        </h3>
+                      </div>
 
-                    <p className="bg-white text-3xl font-bold text-black">
-                      {Object.keys(orderSelected).length === 0
-                        ? "--------"
-                        : barcodeProduct}
-                    </p>
+                      <p className="bg-white text-3xl font-bold text-black">
+                        {Object.keys(orderSelected).length === 0
+                          ? "--------"
+                          : scannedParts[k] ?? PART_DEFS[k].placeholder}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
-
-            <section className="inline-block align-bottom rounded-lg border border-slate-200 text-left overflow-hidden mb-4 w-full sm:w-1/3 sm:my-4">
-              <div className="bg-white p-5">
-                <div className="sm:flex sm:items-start bg-white">
-                  <div className="bg-white text-center sm:mt-0 sm:ml-2 sm:text-left">
-                    <div className="flex items-center">
-                      <Category className="mr-2" color="#A0A2A6" size={20} />
-                      <h3 className="bg-white text-md font-medium text-gray">
-                        Condensador
-                      </h3>
-                    </div>
-
-                    <p className="bg-white text-3xl font-bold text-black">
-                      {Object.keys(orderSelected).length === 0
-                        ? "--------"
-                        : barcodeCondenser}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
+              </section>
+            ))}
 
             <section className="inline-block align-bottom rounded-lg border border-slate-200 text-left overflow-hidden mb-4 w-full sm:w-1/4 sm:my-4">
               <div className="bg-white p-5">
@@ -1511,8 +1634,11 @@ function GenealogyDashboard() {
             {componentsJoined ? null : (
               <div className="mt-8 text-md text-slate-500">
                 {
-                  barcodeProduct === barcodeCondenser ? (<p>
+                  hasDuplicateSerial ? (<p>
                     Operación no permitida: Estas intentando unir 2 componentes con el mismo serial.
+                  </p>) : !allPartsScanned ? (<p>
+                    Faltan por escanear:{" "}
+                    {missingParts.map((k) => PART_DEFS[k].label).join(", ")}.
                   </p>) : globalStatus === 1 ? (
                   <p>
                     Al dar click en "Confirmar unión" podrás realizar la
@@ -1550,12 +1676,12 @@ function GenealogyDashboard() {
             {componentsJoined ? null : (
               <button
                 className={
-                  globalStatus === 1 && barcodeCondenser != barcodeProduct
+                  canConfirm
                     ? "btn-sm bg-primary hover:bg-primary text-white "
                     : "btn-sm bg-secondary text-white text-base flex justify-center hover:text-white disabled:pointer-events-none"
                 }
                 onClick={handleConfirmUnion}
-                disabled={globalStatus !== 1 || barcodeCondenser === barcodeProduct}
+                disabled={!canConfirm}
               >
                 Confirmar unión
               </button>
@@ -1618,7 +1744,21 @@ function GenealogyDashboard() {
               <Code size={16} color="#d97706" />
               <span className="text-sm font-semibold text-amber-600">Dev Mode</span>
               <span className="text-xs text-slate-400">
-                {mode === "compressor" ? "→ compresor" : "→ condensador"}
+                → {PART_DEFS[mode]?.label.toLowerCase()}
+              </span>
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500"
+                title="Configuración de genealogía extendida del SKU"
+              >
+                {!sku
+                  ? "sin orden"
+                  : partsConfig === undefined
+                  ? configLoading
+                    ? "cfg: cargando"
+                    : "cfg: ?"
+                  : isConfigActive(partsConfig)
+                  ? "cfg: activa"
+                  : "sin cfg"}
               </span>
             </div>
             <button
@@ -1629,67 +1769,51 @@ function GenealogyDashboard() {
             </button>
           </div>
 
-          {/* Simular Compresor */}
-          <div className="mb-3">
-            <label className="text-xs text-slate-500 block mb-1">Simular escaneo de Compresor</label>
-            <div className="flex space-x-1">
-              <input
-                className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
-                placeholder="Serial compresor"
-                value={devCompressorInput}
-                onChange={(e) => setDevCompressorInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && devCompressorInput.trim()) {
-                    setMode("compressor");
-                    handleScan(devCompressorInput.trim(), "compressor");
-                    setDevCompressorInput("");
-                  }
-                }}
-              />
-              <button
-                className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
-                disabled={!devCompressorInput.trim()}
-                onClick={() => {
-                  setMode("compressor");
-                  handleScan(devCompressorInput.trim(), "compressor");
-                  setDevCompressorInput("");
-                }}
-              >
-                Scan
-              </button>
-            </div>
-          </div>
-
-          {/* Simular Condensador */}
-          <div className="mb-3">
-            <label className="text-xs text-slate-500 block mb-1">Simular escaneo de Condensador</label>
-            <div className="flex space-x-1">
-              <input
-                className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
-                placeholder="Ej. 515380042826MHTNC"
-                value={devCondenserInput}
-                onChange={(e) => setDevCondenserInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && devCondenserInput.trim()) {
-                    setMode("condenser");
-                    handleScan(devCondenserInput.trim(), "condenser");
-                    setDevCondenserInput("");
-                  }
-                }}
-              />
-              <button
-                className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
-                disabled={!devCondenserInput.trim()}
-                onClick={() => {
-                  setMode("condenser");
-                  handleScan(devCondenserInput.trim(), "condenser");
-                  setDevCondenserInput("");
-                }}
-              >
-                Scan
-              </button>
-            </div>
-          </div>
+          {/* Un simulador de escaneo por parte requerida */}
+          {requiredPartsList.map((k) => {
+            const value = devInputs[k] ?? "";
+            const simulate = () => {
+              if (!value.trim()) return;
+              setMode(k);
+              handleScan(value.trim(), k);
+              setDevInputs((prev) => ({ ...prev, [k]: "" }));
+            };
+            return (
+              <div className="mb-3" key={k}>
+                <label className="text-xs text-slate-500 block mb-1">
+                  Simular escaneo de {PART_DEFS[k].label}
+                </label>
+                <div className="flex space-x-1">
+                  <input
+                    className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-amber-400"
+                    placeholder={
+                      k === "condenser"
+                        ? "Ej. 515380042826MHTNC"
+                        : k === "inverter"
+                        ? "Ej. 5193012017000000123"
+                        : k === "fan"
+                        ? "Ej. 519700042GC6QL8W7"
+                        : "Serial compresor"
+                    }
+                    value={value}
+                    onChange={(e) =>
+                      setDevInputs((prev) => ({ ...prev, [k]: e.target.value }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") simulate();
+                    }}
+                  />
+                  <button
+                    className="px-2 py-1.5 bg-amber-400 text-white text-xs rounded hover:bg-amber-500 disabled:opacity-40"
+                    disabled={!value.trim()}
+                    onClick={simulate}
+                  >
+                    Scan
+                  </button>
+                </div>
+              </div>
+            );
+          })}
 
           {/* Botón NEW */}
           <button
@@ -1701,13 +1825,28 @@ function GenealogyDashboard() {
         </div>
       )}
 
-      <CompressorMismatchModal
+      <PartMismatchModal
         open={mismatchOpen}
         onClose={() => setMismatchOpen(false)}
+        title={(PART_DEFS[mismatchInfo.part]?.label ?? "Componente") + " incorrecto"}
+        subtitle={
+          mismatchInfo.part === "compressor"
+            ? "El material del compresor escaneado NO corresponde al de la orden."
+            : "El " +
+              (PART_DEFS[mismatchInfo.part]?.label ?? "componente").toLowerCase() +
+              " escaneado NO corresponde a la configuración del SKU."
+        }
+        expectedLabel={
+          mismatchInfo.part === "compressor"
+            ? "Material esperado por la orden"
+            : "Material esperado por la configuración"
+        }
+        scannedLabel={(PART_DEFS[mismatchInfo.part]?.label ?? "Componente") + " escaneado"}
         expectedMaterial={mismatchInfo.expectedMaterial}
         scannedSerial={mismatchInfo.scannedSerial}
         expectedPrefix={mismatchInfo.expectedPrefix}
         scannedPrefix={mismatchInfo.scannedPrefix}
+        hint={mismatchInfo.hint}
       />
 
       <InvalidOrderModal

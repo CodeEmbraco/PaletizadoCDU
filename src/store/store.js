@@ -5,6 +5,7 @@ import orderSelectedSlice from './slice/orderSelectedSlice';
 import eventsLogSlice from './slice/eventsLogSlice';
 import testResultsSlice from './slice/testResultSlice';
 import palletsSlice from './slice/palletsSlice';
+import genealogyConfigSlice from './slice/genealogyConfigSlice';
 // import usersSlice from './slice/usersSlice';
 // import BaseCapabilitiesSlice from './slice/BaseCapabilitiesSlice';
 // import LineRateCustomSlice from './slice/LineRateCustomSlice';
@@ -26,6 +27,7 @@ const store = configureStore({
     eventsLog: eventsLogSlice,
     testResults: testResultsSlice,
     pallets: palletsSlice,
+    genealogyConfig: genealogyConfigSlice,
     // users: usersSlice,
     // group: BaseCapabilitiesSlice,
     // calendar: calendarSlice,

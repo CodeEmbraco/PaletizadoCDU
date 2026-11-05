@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Code } from "iconsax-react";
 import LogsTable from "../partials/logs/LogsTable";
-
-const DEV_PASSWORD = "dev1234";
+import { DEV_PASSWORD } from "../utils/passwords";
 
 function LogsView() {
   const [devModeActive, setDevModeActive] = useState(

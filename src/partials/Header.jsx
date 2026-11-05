@@ -6,7 +6,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-hot-toast";
 
-import { Add, Barcode, BoxSearch, Grid2, Grid8, Note, Notepad2 } from "iconsax-react";
+import { Add, Barcode, BoxSearch, DocumentText, Grid2, Grid8, Note, Notepad2, Setting2 } from "iconsax-react";
 
 import { selectOpenOrdersList, selectLoading, getOpenOrdersList } from "../store/slice/ordersSlice";
 import {
@@ -15,10 +15,9 @@ import {
   deactivateMonthEndLock,
 } from "../utils/monthEndLock";
 import ModalBlank from "../components/ModalBlank";
-
 // Contraseña de administrador requerida para reactivar la consulta a SAP
-// tras un cierre de mes (misma que el candado de Reprocesar en Logs).
-const MONTH_END_PASSWORD = "Nidec2026";
+// tras un cierre de mes.
+import { MONTH_END_PASSWORD } from "../utils/passwords";
 
 function Header({
   sidebarOpen,
@@ -206,7 +205,21 @@ function Header({
                   {" "}
                   <BoxSearch className="bg-black mr-2" color="#ffff" size={24} />
                   Logs
-          
+
+                </Link>
+                <Link
+                  to="/genealogia/reporte"
+                  className={`flex bg-black hover:text-hoverTextSidebar transition duration-500 easy-in-out ${location.pathname === '/genealogia/reporte' ? 'text-hoverTextSidebar' : 'text-white'} font-semibold lg:mr-7`}
+                >
+                  <DocumentText className="bg-black mr-2" color="#ffff" size={24} />
+                  Reporte
+                </Link>
+                <Link
+                  to="/configuracion"
+                  className={`flex bg-black hover:text-hoverTextSidebar transition duration-500 easy-in-out ${location.pathname === '/configuracion' ? 'text-hoverTextSidebar' : 'text-white'} font-semibold lg:mr-7`}
+                >
+                  <Setting2 className="bg-black mr-2" color="#ffff" size={24} />
+                  Configuración
                 </Link>
               </div>
               <div className="bg-black my-auto">
