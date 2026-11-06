@@ -1,9 +1,13 @@
 // Catálogo de partes de la genealogía y validación de los códigos escaneados.
 //
-// Formatos reales (el escáner emite material Embraco de 9 chars + serial):
-//   Condensador  515380042826MHTNC    (17)
-//   Fan          519700042GC6QL8W7    (17, DataMatrix)
-//   Inversor     5193012017000000123  (19 dígitos, código de barras Code128)
+// Formatos reales (el escáner emite material Embraco de 9 dígitos + serial):
+//   Condensador  515380042826MHTNC      (17)
+//   Fan          519700042GC6QL8W7      (17, DataMatrix)
+//   Inversor     5193012017000000123    (19 dígitos, código de barras Code128)
+//   Inversor     519601201766863300L0   (20, serial alfanumérico, otro modelo)
+// El serial cambia de largo y de formato según el modelo, así que solo se
+// exige material de 9 dígitos + serial alfanumérico; la validación fuerte es
+// el material contra la configuración del SKU.
 // El DataMatrix del inversor NO trae serial (ej. "FMX51930999925/10/22") y
 // por eso se rechaza: empieza con letras.
 
@@ -12,16 +16,16 @@ export const PART_DEFS = {
   inverter: {
     label: "Inversor",
     placeholder: "Escanea inversor",
-    regex: /^\d{19}$/,
-    formatHint: "19 dígitos (código de barras)",
+    regex: /^\d{9}[A-Z0-9]{4,}$/,
+    formatHint: "material de 9 dígitos seguido del serial (código de barras)",
     requiresKey: "requires_inverter",
     materialKey: "inverter_material",
   },
   fan: {
     label: "Fan",
     placeholder: "Escanea fan",
-    regex: /^[A-Z0-9]{17}$/,
-    formatHint: "17 caracteres (DataMatrix)",
+    regex: /^\d{9}[A-Z0-9]{4,}$/,
+    formatHint: "material de 9 dígitos seguido del serial (DataMatrix)",
     requiresKey: "requires_fan",
     materialKey: "fan_material",
   },
@@ -83,7 +87,7 @@ export const validatePart = (part, code, config) => {
       expected,
       scanned,
       hint:
-        "Parece el DataMatrix del inversor, que no trae el serial. Escanea el código de barras de la etiqueta (19 dígitos).",
+        "Parece el DataMatrix del inversor, que no trae el serial. Escanea el código de barras de la etiqueta.",
     };
   }
   if (!def.regex.test(code)) {
