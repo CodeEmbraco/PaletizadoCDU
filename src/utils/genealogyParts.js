@@ -5,9 +5,10 @@
 //   Fan          519700042GC6QL8W7      (17, DataMatrix)
 //   Inversor     5193012017000000123    (19 dígitos, código de barras Code128)
 //   Inversor     519601201766863300L0   (20, serial alfanumérico, otro modelo)
-// El serial cambia de largo y de formato según el modelo, así que solo se
-// exige material de 9 dígitos + serial alfanumérico; la validación fuerte es
-// el material contra la configuración del SKU.
+// El serial cambia de largo y de formato según el modelo, y el material puede
+// ser alfanumérico (hay fans con letras), así que solo se exige material de 9
+// caracteres + serial alfanumérico; la validación fuerte es el material contra
+// la configuración del SKU.
 // El DataMatrix del inversor NO trae serial (ej. "FMX51930999925/10/22") y
 // por eso se rechaza: empieza con letras.
 
@@ -16,16 +17,16 @@ export const PART_DEFS = {
   inverter: {
     label: "Inversor",
     placeholder: "Escanea inversor",
-    regex: /^\d{9}[A-Z0-9]{4,}$/,
-    formatHint: "material de 9 dígitos seguido del serial (código de barras)",
+    regex: /^[A-Z0-9]{13,}$/,
+    formatHint: "material de 9 caracteres seguido del serial (código de barras)",
     requiresKey: "requires_inverter",
     materialKey: "inverter_material",
   },
   fan: {
     label: "Fan",
     placeholder: "Escanea fan",
-    regex: /^\d{9}[A-Z0-9]{4,}$/,
-    formatHint: "material de 9 dígitos seguido del serial (DataMatrix)",
+    regex: /^[A-Z0-9]{13,}$/,
+    formatHint: "material de 9 caracteres seguido del serial (DataMatrix)",
     requiresKey: "requires_fan",
     materialKey: "fan_material",
   },
@@ -80,7 +81,9 @@ export const validatePart = (part, code, config) => {
   const expected = normalizeMaterial(config?.[def.materialKey]);
   const scanned = materialOf(code);
 
-  if (part === "inverter" && /^[A-Z]/i.test(code)) {
+  // DataMatrix del inversor: "FMX" + material + fecha con diagonales. No se
+  // puede usar "empieza con letra" porque un material puede ser alfanumérico.
+  if (part === "inverter" && (/^FMX/i.test(code) || code.includes("/"))) {
     return {
       ok: false,
       reason: "datamatrix",

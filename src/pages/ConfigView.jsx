@@ -15,7 +15,9 @@ import {
 import { selectOrderSelected } from "../store/slice/orderSelectedSlice";
 import { addEventToGenealogyLog } from "../store/slice/eventsLogSlice";
 
-const MATERIAL_REGEX = /^\d{9}$/;
+// Material Embraco de 9 caracteres; puede ser alfanumérico (hay fans con letras).
+const MATERIAL_REGEX = /^[A-Z0-9]{9}$/;
+const cleanMaterial = (value) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 const emptyForm = {
   material_code: "",
@@ -128,12 +130,12 @@ function ConfigView() {
   function validateForm() {
     const errors = {};
     if (!MATERIAL_REGEX.test(form.material_code)) {
-      errors.material_code = "El SKU debe tener 9 dígitos.";
+      errors.material_code = "El SKU debe tener 9 caracteres (letras o números).";
     }
     EXTRA_PARTS.forEach((k) => {
       const def = PART_DEFS[k];
       if (form[def.requiresKey] && !MATERIAL_REGEX.test(form[def.materialKey])) {
-        errors[def.materialKey] = `El material de ${def.label.toLowerCase()} debe tener 9 dígitos.`;
+        errors[def.materialKey] = `El material de ${def.label.toLowerCase()} debe tener 9 caracteres (letras o números).`;
       }
     });
     if (!form.requires_inverter && !form.requires_fan) {
@@ -394,7 +396,7 @@ function ConfigView() {
                 {editing ? "Editar SKU " + form.material_code : "Nuevo SKU"}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                El SKU es el material del condensador: los últimos 9 dígitos del material de la orden.
+                El SKU es el material del condensador: los últimos 9 caracteres del material de la orden.
               </p>
             </div>
 
@@ -408,7 +410,7 @@ function ConfigView() {
                     maxLength={9}
                     disabled={editing}
                     value={form.material_code}
-                    onChange={(e) => setField("material_code", e.target.value.replace(/\D/g, ""))}
+                    onChange={(e) => setField("material_code", cleanMaterial(e.target.value))}
                   />
                   {!editing && selectedSku && (
                     <button
@@ -444,14 +446,14 @@ function ConfigView() {
                         />
                         Requiere {def.label.toLowerCase()}
                       </label>
-                      <label className={`${label} mt-3`}>Material esperado</label>
+                      <label className={`${label} mt-3`}>Material esperado (9 caracteres)</label>
                       <input
                         className={`${input} ${mono}`}
                         placeholder={k === "inverter" ? "519301201" : "519700042"}
                         maxLength={9}
                         disabled={!on}
                         value={form[def.materialKey]}
-                        onChange={(e) => setField(def.materialKey, e.target.value.replace(/\D/g, ""))}
+                        onChange={(e) => setField(def.materialKey, cleanMaterial(e.target.value))}
                       />
                       {formErrors[def.materialKey] && (
                         <p className="text-xs text-red-500 mt-1.5">{formErrors[def.materialKey]}</p>
