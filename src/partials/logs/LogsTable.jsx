@@ -21,6 +21,8 @@ import {
   ArrowRight2,
 } from "iconsax-react";
 import DropdownFilter from "../../components/DropdownFilter";
+// Solo pallets con al menos un componente montado (los creados en 0 no se listan)
+const LOGS_BASE_QUERY = "&workstation=MXCDU01&with_components=true";
 function LogsTable({ devMode = false }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -28,7 +30,7 @@ function LogsTable({ devMode = false }) {
   const [count, setCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false);
   // Mantener el filtro activo para que se conserve al cambiar de página
-  const [filterQuery, setFilterQuery] = useState("&workstation=MXCDU01");
+  const [filterQuery, setFilterQuery] = useState(LOGS_BASE_QUERY);
 
   useEffect(() => {
     fetchPallets(filterQuery);
@@ -92,9 +94,9 @@ function LogsTable({ devMode = false }) {
     setCurrentPage(1);
     // Actualizar el filtro activo; el useEffect dispara el fetch
     if (sapSuccess === "none" || sapSuccess === "all") {
-      setFilterQuery("&workstation=MXCDU01");
+      setFilterQuery(LOGS_BASE_QUERY);
     } else {
-      setFilterQuery(`&workstation=MXCDU01&sap_success=${sapSuccess}`);
+      setFilterQuery(`${LOGS_BASE_QUERY}&sap_success=${sapSuccess}`);
     }
   };
   const orders = [
