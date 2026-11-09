@@ -1,13 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import icons from '../assets/icons/icons';
 import Header from '../partials/Header';
 import ModalBasic from './ModalBasic';
 import OrdersTable from '../partials/orders/OrdersTable';
+import { getOpenOrdersList } from '../store/slice/ordersSlice';
+
+// Evento global para abrir el listado de órdenes desde cualquier pantalla
+// (p. ej. Paletización lo dispara al iniciar un pallet nuevo).
+export const OPEN_ORDERS_EVENT = 'open-orders-modal';
+// Se difiere un tick: si lo dispara un clic (botón Nuevo), ese mismo clic
+// llegaría al documento después de abrir el modal y lo cerraría.
+export const requestOpenOrders = () =>
+  setTimeout(() => document.dispatchEvent(new CustomEvent(OPEN_ORDERS_EVENT)), 0);
 
 function Layout({ icon, nameRoute, nameSubRoute, children }) {
+  const dispatch = useDispatch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [basicModalOpen, setBasicModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      dispatch(getOpenOrdersList());
+      setBasicModalOpen(true);
+    };
+    document.addEventListener(OPEN_ORDERS_EVENT, handler);
+    return () => document.removeEventListener(OPEN_ORDERS_EVENT, handler);
+  }, []);
 
   const [selectedItems, setSelectedItems] = useState([]);
 

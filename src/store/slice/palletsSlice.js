@@ -227,7 +227,8 @@ export const getCompressor = (condenserSerial) => async (dispatch) => {
 };
 
 
-export const createPallet = (order, barcode, product, quantity, onError) => (dispatch) => {
+// onOrderMismatch(palletOrder) se invoca si el pallet ya existe ligado a otra orden.
+export const createPallet = (order, barcode, product, quantity, onError, onOrderMismatch) => (dispatch) => {
     const palletData = {
         workstation: "MXCDU01",
         order: order,
@@ -238,6 +239,24 @@ export const createPallet = (order, barcode, product, quantity, onError) => (dis
     axios
       .post(`${API_BASE()}/api/v1/paletization/pallets/`, palletData)
       .then((response) => {
+        const pallet = response.data;
+        // El pallet ya existe en BD ligado a otra orden: no se reutiliza, porque
+        // SAP recibiría la orden actual y la BD conservaría la anterior.
+        if (
+          response.status === 200 &&
+          pallet?.order &&
+          order &&
+          String(pallet.order) !== String(order)
+        ) {
+          dispatch(addEventToPaletizationLog({
+            text: "Pallet " + barcode + " RECHAZADO: pertenece a la orden " + pallet.order +
+              " y la orden seleccionada es " + order + ".",
+            timestamp: new Date().toISOString(),
+          }));
+          onError?.();
+          onOrderMismatch?.(pallet.order);
+          return;
+        }
         if (response.status === 201) {
           console.log("Pallet creado con éxito:", response.data);
           dispatch(setPallet(response.data));
@@ -247,7 +266,6 @@ export const createPallet = (order, barcode, product, quantity, onError) => (dis
           const palletIdentifier = response.data.identifier;
           dispatch(getAllComponents(palletIdentifier));
         }
-        const pallet = response.data;
         if (pallet?.send_to_sap && pallet?.sap_success) {
           dispatch(setPalletNotified({ ICharg: pallet.identifier }));
         } else {
@@ -258,6 +276,33 @@ export const createPallet = (order, barcode, product, quantity, onError) => (dis
         onError?.();
         endpointsCodes(error, dispatch, setNotFound);
       });
+  };
+
+  // Reasigna la orden (y producto) de un pallet que aún no se notificó a SAP.
+  // La autorización por contraseña se valida en la pantalla. Devuelve la
+  // respuesta del API o null si falló.
+  export const changePalletOrder = (palletIdentifier, order, product) => async (dispatch) => {
+    try {
+      const response = await axios.post(
+        `${API_BASE()}/api/v1/paletization/pallets/${palletIdentifier}/change-order/`,
+        { order, product }
+      );
+      dispatch(addEventToPaletizationLog({
+        text: "Pallet " + palletIdentifier + " reasignado de la orden " + response.data.previous_order +
+          " a la orden " + order + " (autorizado con contraseña)." +
+          (response.data.mounted_components ? " Componentes montados: " + response.data.mounted_components + "." : ""),
+        timestamp: new Date().toISOString(),
+      }));
+      return response.data;
+    } catch (error) {
+      const msg = error?.response?.data?.error || error.message;
+      notifyError("No se pudo cambiar la orden del pallet: " + msg);
+      dispatch(addEventToPaletizationLog({
+        text: "Cambio de orden del pallet " + palletIdentifier + " RECHAZADO: " + msg,
+        timestamp: new Date().toISOString(),
+      }));
+      return null;
+    }
   };
 
   export const getAllComponents = (palletIdentifier) => (dispatch) => {
@@ -413,6 +458,7 @@ export const createPallet = (order, barcode, product, quantity, onError) => (dis
       ItJsonInst: ItJsonInst
     };
 
+    // Devuelve true solo si SAP aceptó la notificación.
     try {
       const response = await axios.post(`${API_BASE()}/api/v1/paletization/pallets/sap/notifiy/`, xmlData);
       if (response.status === 200) {
@@ -420,13 +466,15 @@ export const createPallet = (order, barcode, product, quantity, onError) => (dis
           notifySuccesInSAP(xmlData.ICharg, response.data.EMessage);
           dispatch(setPalletNotified({ ICharg: xmlData.ICharg }));
           dispatch(getAllComponents(pallet.identifier));
-        } else {
-          notifyErrorInSAP(xmlData.ICharg, response.data.EMessage);
+          return true;
         }
+        notifyErrorInSAP(xmlData.ICharg, response.data.EMessage);
       }
+      return false;
     } catch (error) {
       console.log(error);
       notifyErrorInSAP(xmlData.ICharg, error.message);
+      return false;
     } finally {
       dispatch(setLoadingProcessInSap(false));
     }
