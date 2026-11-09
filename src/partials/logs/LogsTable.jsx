@@ -21,8 +21,14 @@ import {
   ArrowRight2,
 } from "iconsax-react";
 import DropdownFilter from "../../components/DropdownFilter";
-// Solo pallets con al menos un componente montado (los creados en 0 no se listan)
-const LOGS_BASE_QUERY = "&workstation=MXCDU01&with_components=true";
+// Query base de Logs. Por defecto se ocultan los pallets creados en 0
+// (with_components=true); el operador puede quitarlo desde el dropdown de filtros.
+const buildLogsQuery = (sapSuccess = "none", hideEmpty = true) => {
+  let query = "&workstation=MXCDU01";
+  if (hideEmpty) query += "&with_components=true";
+  if (sapSuccess === "true" || sapSuccess === "false") query += `&sap_success=${sapSuccess}`;
+  return query;
+};
 function LogsTable({ devMode = false }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -30,7 +36,7 @@ function LogsTable({ devMode = false }) {
   const [count, setCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false);
   // Mantener el filtro activo para que se conserve al cambiar de página
-  const [filterQuery, setFilterQuery] = useState(LOGS_BASE_QUERY);
+  const [filterQuery, setFilterQuery] = useState(buildLogsQuery());
 
   useEffect(() => {
     fetchPallets(filterQuery);
@@ -89,15 +95,11 @@ function LogsTable({ devMode = false }) {
     return pages;
   };
 
-  const applyFilter = (sapSuccess) => {
+  const applyFilter = (sapSuccess, hideEmpty = true) => {
     // Volver a la primera página al aplicar el filtro
     setCurrentPage(1);
     // Actualizar el filtro activo; el useEffect dispara el fetch
-    if (sapSuccess === "none" || sapSuccess === "all") {
-      setFilterQuery(LOGS_BASE_QUERY);
-    } else {
-      setFilterQuery(`${LOGS_BASE_QUERY}&sap_success=${sapSuccess}`);
-    }
+    setFilterQuery(buildLogsQuery(sapSuccess, hideEmpty));
   };
   const orders = [
     {
@@ -177,7 +179,7 @@ function LogsTable({ devMode = false }) {
           role="navigation"
           aria-label="Navegación de páginas"
         >
-          <DropdownFilter applyFilter={applyFilter} />
+          <DropdownFilter applyFilter={applyFilter} devMode={devMode} />
 
           <span className="hidden md:inline text-sm text-slate-500 mx-4 whitespace-nowrap">
             Página <span className="font-semibold text-slate-700">{currentPage}</span> de{" "}

@@ -3,11 +3,15 @@ import Transition from '../utils/Transition';
 
 function DropdownFilter({
   applyFilter,
-  align
+  align,
+  devMode = false
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificadosSelected, setNotificadosSelected] = useState(false);
   const [pendientesSelected, setPendientesSelected] = useState(false);
+  // Por defecto no se listan pallets creados en 0; solo en dev mode (vista con
+  // Eliminar) se puede desactivar.
+  const [ocultarVaciosSelected, setOcultarVaciosSelected] = useState(true);
 
   const trigger = useRef(null);
   const dropdown = useRef(null);
@@ -24,7 +28,7 @@ function DropdownFilter({
     } else {
       var sapSuccess = "none"
     }
-    applyFilter(sapSuccess);
+    applyFilter(sapSuccess, devMode ? ocultarVaciosSelected : true);
   };
   // close on click outside
   useEffect(() => {
@@ -50,6 +54,7 @@ function DropdownFilter({
   const limpiarFiltros = () => {
     setNotificadosSelected(false);
     setPendientesSelected(false);
+    setOcultarVaciosSelected(true);
   };
 
   return (
@@ -102,6 +107,19 @@ function DropdownFilter({
                 <span className="text-sm font-medium ml-2">Pendientes</span>
               </label>
             </li>
+            {devMode && (
+              <li className="py-1 px-3">
+                <label className="flex items-center whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    className="form-checkbox"
+                    checked={ocultarVaciosSelected}
+                    onChange={() => setOcultarVaciosSelected(!ocultarVaciosSelected)}
+                  />
+                  <span className="text-sm font-medium ml-2">Ocultar pallets en 0</span>
+                </label>
+              </li>
+            )}
           </ul>
           <div className="py-2 px-3 border-t border-slate-200 bg-slate-50">
             <ul className="flex items-center justify-between">
