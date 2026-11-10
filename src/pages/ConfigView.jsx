@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Add, Edit2, Lock1, Setting2, Trash } from "iconsax-react";
 
 import { REPROCESS_PASSWORD } from "../utils/passwords";
-import { PART_DEFS, EXTRA_PARTS } from "../utils/genealogyParts";
+import { PART_DEFS, EXTRA_PARTS, PART_PREFIX_MAX_LENGTH } from "../utils/genealogyParts";
 import {
   fetchAllConfigs,
   saveConfig,
@@ -17,6 +17,9 @@ import { addEventToGenealogyLog } from "../store/slice/eventsLogSlice";
 
 // Material Embraco de 9 caracteres; puede ser alfanumérico (hay fans con letras).
 const MATERIAL_REGEX = /^[A-Z0-9]{9}$/;
+// Prefijo esperado de inversor/fan: material Embraco (9) o modelo del
+// fabricante (p. ej. AFL25AUHWG04), de largo variable.
+const PART_PREFIX_REGEX = new RegExp(`^[A-Z0-9]{1,${PART_PREFIX_MAX_LENGTH}}$`);
 const cleanMaterial = (value) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 const emptyForm = {
@@ -134,8 +137,8 @@ function ConfigView() {
     }
     EXTRA_PARTS.forEach((k) => {
       const def = PART_DEFS[k];
-      if (form[def.requiresKey] && !MATERIAL_REGEX.test(form[def.materialKey])) {
-        errors[def.materialKey] = `El material de ${def.label.toLowerCase()} debe tener 9 caracteres (letras o números).`;
+      if (form[def.requiresKey] && !PART_PREFIX_REGEX.test(form[def.materialKey])) {
+        errors[def.materialKey] = `El material/modelo de ${def.label.toLowerCase()} debe tener de 1 a ${PART_PREFIX_MAX_LENGTH} caracteres (letras o números).`;
       }
     });
     if (!form.requires_inverter && !form.requires_fan) {
@@ -446,11 +449,11 @@ function ConfigView() {
                         />
                         Requiere {def.label.toLowerCase()}
                       </label>
-                      <label className={`${label} mt-3`}>Material esperado (9 caracteres)</label>
+                      <label className={`${label} mt-3`}>Material o modelo esperado (inicio del código)</label>
                       <input
                         className={`${input} ${mono}`}
-                        placeholder={k === "inverter" ? "519301201" : "519700042"}
-                        maxLength={9}
+                        placeholder={k === "inverter" ? "519301201" : "519700042 o AFL25AUHWG04"}
+                        maxLength={PART_PREFIX_MAX_LENGTH}
                         disabled={!on}
                         value={form[def.materialKey]}
                         onChange={(e) => setField(def.materialKey, cleanMaterial(e.target.value))}

@@ -60,7 +60,7 @@ import {
   requiredParts,
   resolvePart,
   validatePart,
-  normalizeMaterial,
+  normalizePartPrefix,
   isConfigActive,
 } from "../utils/genealogyParts";
 import {
@@ -176,11 +176,11 @@ function GenealogyDashboard() {
         sku +
         ": requiere inversor " +
         (partsConfig.requires_inverter
-          ? "(" + normalizeMaterial(partsConfig.inverter_material) + ")"
+          ? "(" + normalizePartPrefix(partsConfig.inverter_material) + ")"
           : "no") +
         " | fan " +
         (partsConfig.requires_fan
-          ? "(" + normalizeMaterial(partsConfig.fan_material) + ")"
+          ? "(" + normalizePartPrefix(partsConfig.fan_material) + ")"
           : "no")
       : "SKU " +
         sku +
@@ -650,7 +650,7 @@ function GenealogyDashboard() {
       .map((k) => ({
         part_type: k,
         serial: scannedParts[k],
-        material_code: normalizeMaterial(partsConfig?.[PART_DEFS[k].materialKey]),
+        material_code: normalizePartPrefix(partsConfig?.[PART_DEFS[k].materialKey]),
       }));
     if (extraParts.length > 0) {
       payload.parts = extraParts;

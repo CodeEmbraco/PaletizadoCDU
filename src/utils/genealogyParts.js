@@ -1,14 +1,16 @@
 // Catálogo de partes de la genealogía y validación de los códigos escaneados.
 //
-// Formatos reales (el escáner emite material Embraco de 9 dígitos + serial):
-//   Condensador  515380042826MHTNC      (17)
-//   Fan          519700042GC6QL8W7      (17, DataMatrix)
-//   Inversor     5193012017000000123    (19 dígitos, código de barras Code128)
-//   Inversor     519601201766863300L0   (20, serial alfanumérico, otro modelo)
-// El serial cambia de largo y de formato según el modelo, y el material puede
-// ser alfanumérico (hay fans con letras), así que solo se exige material de 9
-// caracteres + serial alfanumérico; la validación fuerte es el material contra
-// la configuración del SKU.
+// Formatos reales (el escáner emite un prefijo + serial):
+//   Condensador  515380042826MHTNC          (material 9 + serial 8)
+//   Fan          519700042GC6QL8W7          (material 9 + serial 8, DataMatrix)
+//   Fan          AFL25AUHWG046107F76R0809   (modelo 12 + serial 12, otro modelo)
+//   Inversor     5193012017000000123        (material 9 + serial 10, Code128)
+//   Inversor     519601201766863300L0       (material 9 + serial 11, otro modelo)
+// El prefijo normalmente es el material Embraco de 9, pero hay fans cuya
+// etiqueta trae el modelo del fabricante, y el serial cambia de largo y de
+// formato según el modelo. Por eso el "material esperado" configurado para
+// inversor/fan es un prefijo alfanumérico de largo variable (hasta 20) y la
+// validación fuerte es que el código escaneado empiece con ese prefijo.
 // El DataMatrix del inversor NO trae serial (ej. "FMX51930999925/10/22") y
 // por eso se rechaza: empieza con letras.
 
@@ -17,16 +19,16 @@ export const PART_DEFS = {
   inverter: {
     label: "Inversor",
     placeholder: "Escanea inversor",
-    regex: /^[A-Z0-9]{13,}$/,
-    formatHint: "material de 9 caracteres seguido del serial (código de barras)",
+    regex: /^[A-Z0-9]{2,}$/,
+    formatHint: "material/modelo configurado seguido del serial (código de barras)",
     requiresKey: "requires_inverter",
     materialKey: "inverter_material",
   },
   fan: {
     label: "Fan",
     placeholder: "Escanea fan",
-    regex: /^[A-Z0-9]{13,}$/,
-    formatHint: "material de 9 caracteres seguido del serial (DataMatrix)",
+    regex: /^[A-Z0-9]{2,}$/,
+    formatHint: "material/modelo configurado seguido del serial (DataMatrix)",
     requiresKey: "requires_fan",
     materialKey: "fan_material",
   },
@@ -36,12 +38,18 @@ export const PART_DEFS = {
 // Partes adicionales (las que dependen de la configuración por SKU).
 export const EXTRA_PARTS = ["inverter", "fan"];
 
-// Material Embraco de 9 chars: el matnr de SAP trae ceros a la izquierda.
+// Material Embraco de 9 chars (SKU): el matnr de SAP trae ceros a la izquierda.
 export const normalizeMaterial = (material) =>
   String(material ?? "").trim().slice(-9);
 
-// En todos los escaneos el material va en los primeros 9 caracteres.
-export const materialOf = (code) => String(code ?? "").slice(0, 9);
+// Prefijo configurado para inversor/fan: se compara completo, sin recortar.
+export const PART_PREFIX_MAX_LENGTH = 20;
+export const normalizePartPrefix = (prefix) =>
+  String(prefix ?? "").trim().toUpperCase();
+
+// Inicio del código escaneado, del largo del prefijo esperado (9 por defecto).
+export const materialOf = (code, expected = "") =>
+  String(code ?? "").slice(0, normalizePartPrefix(expected).length || 9);
 
 export const isConfigActive = (config) => !!config && config.active !== false;
 
@@ -59,12 +67,13 @@ export const requiredParts = (config) => [
 // y condensador se siguen resolviendo por el paso activo (flujo clásico).
 export const resolvePart = (code, activeMode, config) => {
   if (!isConfigActive(config)) return activeMode;
-  const scannedMaterial = materialOf(code);
   for (const k of EXTRA_PARTS) {
     const def = PART_DEFS[k];
+    const expected = normalizePartPrefix(config[def.materialKey]);
     if (
       config[def.requiresKey] &&
-      scannedMaterial === normalizeMaterial(config[def.materialKey])
+      expected &&
+      String(code ?? "").startsWith(expected)
     ) {
       return k;
     }
@@ -78,8 +87,8 @@ export const validatePart = (part, code, config) => {
   const def = PART_DEFS[part];
   if (!def?.regex) return { ok: true };
 
-  const expected = normalizeMaterial(config?.[def.materialKey]);
-  const scanned = materialOf(code);
+  const expected = normalizePartPrefix(config?.[def.materialKey]);
+  const scanned = materialOf(code, expected);
 
   // DataMatrix del inversor: "FMX" + material + fecha con diagonales. No se
   // puede usar "empieza con letra" porque un material puede ser alfanumérico.
@@ -104,6 +113,16 @@ export const validatePart = (part, code, config) => {
   }
   if (expected && scanned !== expected) {
     return { ok: false, reason: "material", expected, scanned, hint: "" };
+  }
+  // Después del prefijo debe venir el serial (al menos un carácter).
+  if (expected && code.length <= expected.length) {
+    return {
+      ok: false,
+      reason: "format",
+      expected,
+      scanned,
+      hint: `Formato inválido: el código trae el material/modelo ${expected} pero no el serial.`,
+    };
   }
   return { ok: true };
 };
