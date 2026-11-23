@@ -386,6 +386,36 @@ function GenealogyDashboard() {
     }
 
     if (part === "condenser") {
+      // El material del condensador va en los PRIMEROS 9 caracteres del
+      // serial (igual que qrValue.slice(0, 9) en la etiqueta) y debe ser el
+      // producto de la orden (últimos 9 del matnr). Si no coincide, se rechaza.
+      const expectedProduct = sku.toUpperCase();
+      const scannedProduct = code.slice(0, 9);
+      if (expectedProduct && scannedProduct !== expectedProduct) {
+        setMismatchInfo({
+          part: "condenser",
+          expectedMaterial: expectedProduct,
+          scannedSerial: code,
+          expectedPrefix: expectedProduct,
+          scannedPrefix: scannedProduct,
+          hint: "",
+        });
+        setMismatchOpen(true);
+        dispatch(
+          addEventToGenealogyLog({
+            text:
+              "Condensador RECHAZADO por producto no coincide. Esperado: " +
+              expectedProduct +
+              " | Escaneado: " +
+              scannedProduct +
+              " (" +
+              code +
+              ")",
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
+      }
       notifyCondenserScanned(code);
       dispatch(getTestResults(code));
       acceptScan("condenser", code, "Condensador escaneado: " + code);
@@ -1832,12 +1862,14 @@ function GenealogyDashboard() {
         subtitle={
           mismatchInfo.part === "compressor"
             ? "El material del compresor escaneado NO corresponde al de la orden."
+            : mismatchInfo.part === "condenser"
+            ? "El producto del condensador escaneado NO corresponde al de la orden."
             : "El " +
               (PART_DEFS[mismatchInfo.part]?.label ?? "componente").toLowerCase() +
               " escaneado NO corresponde a la configuración del SKU."
         }
         expectedLabel={
-          mismatchInfo.part === "compressor"
+          mismatchInfo.part === "compressor" || mismatchInfo.part === "condenser"
             ? "Material esperado por la orden"
             : "Material esperado por la configuración"
         }
